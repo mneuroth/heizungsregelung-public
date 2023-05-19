@@ -213,6 +213,7 @@ Parameter für heizung.py:
     > -i : use simulation port 8008 for http
     > -p : use default port 80 for http
     > -t : test without hardware (simulate hardware)
+    > -e : use exclusive access modus for RS232 interface
     > -c : run with history cache
     > -d : run without history cache
     > -w : disable watchdog in python program

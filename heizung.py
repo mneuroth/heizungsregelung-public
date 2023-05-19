@@ -2977,7 +2977,14 @@ if __name__ == '__main__':
         set_default_http_port(True)
     if '-t' in sys.argv:   # test without hardware (simulate hardware)
         set_test(True)
-    if '-e' in sys.argv:   # use exclusive modus for RS232 interface
+    if '-e' in sys.argv:   # use exclusive modus for RS232 interface 
+        # -> this heizungsregelungs process locks the RS232 interface 
+        #    to communicate with the heating control board for the
+        #    whole time the process is running.
+        #    Otherwise the RS232 interface will be requested only
+        #    if needed for communication and afterwards the interface
+        #    will be released again, so that another process can use 
+        #    it to communicate with the heating control board
         set_exclusive_rs232(True)
     if '-c' in sys.argv:   # run with history cache
         set_use_cache(True)
