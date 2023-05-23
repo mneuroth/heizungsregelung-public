@@ -268,6 +268,7 @@ Datum        | Aktion
 22.4.2023    | Erweiterung der Dokumentation für die Platine und für das Passiv Haus
  7.5.2023    | Öffentliches GitHub Projekt heizungsregelung-public angelegt
  5.2023      | Verbesserung der Robustheit und Wiederverbindungsmöglichkeit der RS232 Kommunikation
+23.5.2023    | Verwende stabilere PL011 anstatt miniuart für RS232 Kommunikation
 
 Funktionen der Heizungsregelung
 -------------------------------
@@ -310,8 +311,9 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 - Raspberry Pi Einrichtung
     - Raspberry OS Linux Betriebssystem auf SD Karte einrichten
     - Verwende UART für RS232 auf Raspberry Pi 3 (default: Bluetooth uses UART and RS232 uses MINI-UART which is not so stable), see: [RS232 on Raspberry Pi 3](https://pi-buch.info/die-serielle-schnittstelle-auf-dem-raspberry-pi-3/)
-        - use UART and disable WLAN: --> edit `/boot/config.txt`
-            - `dtoverlay=pi3-miniuart-bt`
+        - siehe umfrangreiche Dokumentation für [UART Kommunikation auf Raspberry Pi](https://www.electronicwings.com/raspberry-pi/raspberry-pi-uart-communication-using-python-and-c)
+        - Verwende `PL011` für UART Kommunikation und `miniuart` für die Bluetooth Kommunikation (miniuart ändert Baudrate mit CPU/GPU Frequenz und ist daher nicht so stabil wie PL011!) und ggf. `WLAN` ausschalten: --> edit `/boot/config.txt`
+            - `dtoverlay=pi3-miniuart-bt` oder neu: `dtoverlay=miniuart-bt`
             - `dtoverlay=pi3-disable-wifi`
     - Benenne den USB-Memory-Stick in `USB_DATA` -> es sollte folgender Pfad verfügbar sein `/media/pi/USB_DATA/heating_control`
 	- Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
