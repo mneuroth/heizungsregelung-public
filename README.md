@@ -180,6 +180,10 @@ Gesteuert wird die Heizungsregelung über eine [Web-Oberfläche -> http://heizun
   <img src="bilder/http_client_plot.png" alt="Anzeige" width="400" >
 </p>
 
+Die Daten der Heizungsregelung können auch über das [Grafana Tool](http://heizungsregelung:3000/d/aPa8n1Y4kY/4prod-heinzungsregelung?orgId=1) angezeigt werden.
+
+<img src="bilder/GrafanaPlotExample.png" alt="Grafana" >
+
 Verfügbare Kommandos für die Web-Oberfläche sind:
 * PLOT
 * EXCEPTION
