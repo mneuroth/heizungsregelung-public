@@ -171,8 +171,8 @@ except NotImplementedError:
 
 # *************************************************************************
 
-__version__ = "1.5"
-__date__    = "5.4.2023"
+__version__ = "1.6"
+__date__    = "10.1.2024"
 
 # *************************************************************************
 
@@ -619,7 +619,6 @@ function JSRequest(name,val) {
         s += sScript
         #s += '<body onload="drawCanvas()">'
         s += '<a href="plot.html">Measurement Plots<a/>'
-        s += "<p>current control values:"
         if bExtended:
             data = self._read_data_extended()
         else:
@@ -632,13 +631,15 @@ function JSRequest(name,val) {
         si += "<tr><th>Name</th><th>Value</th></tr>"
         sv = "<table>"
         if bExtended:
-            sv += "<tr><th>Name</th><th>Value</th><th>Std Dev</th></tr>"
+            sv += "<tr><th>Name</th><th>Value [°C]</th><th>Std Dev</th></tr>"
         else:
-            sv += "<tr><th>Name</th><th>Value</th></tr>"
+            sv += "<tr><th>Name</th><th>Value [°C]</th></tr>"
         ss = "<table>"
         ss += "<tr><th>Name</th><th>Value</th></tr>"
         sc = "<table>"
         sc += "<tr><th>Name</th><th>Value</th></tr>"
+        so = "<table>"
+        so += "<tr><th>Name</th><th>Value [s]</th></tr>"
         sp = "<table>"
         sp += "<tr><th>Name</th><th>Value</th></tr>"
         for e in data:
@@ -685,17 +686,22 @@ function JSRequest(name,val) {
                 sm += "<td>"+str(val)+"</td>"
                 sm += "<td>"+get_on_off_form(e,str_to_value(val))+"</td>"
                 sm += "</tr>"
-            elif e.startswith("SWITCH"):                
+            elif e.startswith("SWITCH"):
                 ss += "<tr>"
                 ss += "<td>"+e+"</td>"
                 ss += "<td>"+str(val)+"</td>"
                 ss += "</tr>"
-            elif e.endswith("CONTROL"):                
+            elif e.endswith("CONTROL"):
                 sc += "<tr>"
                 sc += "<td>"+e+"</td>"
                 sc += "<td>"+str(val)+"</td>"
                 sc += "</tr>"
-            else:                
+            elif e.startswith("OPERATING_HOURS"):
+                so += "<tr>"
+                so += "<td>"+e+"</td>"
+                so += "<td>"+str(val)+"</td>"
+                so += "</tr>"
+            else:
                 sv += "<tr>"
                 sv += "<td>"+e+"</td>"
                 sv += "<td>"+str(val)+"</td>"
@@ -704,24 +710,27 @@ function JSRequest(name,val) {
                 sv += "</tr>"
         sm += "</table>"
         sv += "</table>"
-        ss += "</table>"        
-        sc += "</table>"     
+        ss += "</table>"
+        sc += "</table>"
+        so += "</table>"
         sp += "</table>"
         si += "</table>"
         smv += "</table>"   
-        s += "<p>" 
+        s += "<p><b>Current Control Values:</b><p>"
         s += sm
-        s += "<p>" 
+        s += "<p><b>Current Temperature Values [°C]:</b><p>"
         s += sv
-        s += "<p>" 
+        s += "<p><b>Some Control Values:</b><p>"
         s += smv
-        s += "<p>" 
+        s += "<p><b>Current Switch Values:</b><p>"
         s += ss
-        s += "<p>" 
+        s += "<p><b>Current Control Values:</b><p>"
         s += sc
-        s += "<p>" 
+        s += "<p><b>Current Operating Hours Values [s]:</b><p>"
+        s += so
+        s += "<p><b>Some Other Values:</b><p>"
         s += sp
-        s += "<p>" 
+        s += "<p><b>Intervalls:</b><p>"
         s += si
         s += "<p>" 
 # TODO --> nur im Testbetrieb stop ermoeglichen        

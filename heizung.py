@@ -33,26 +33,36 @@
     Class Overview:
     ===============
     
+    object
+      |
     Device
       |
     Rs232Device
       |
-    ArduinoMega   ConradMultiRelais     # used by SignalProcessor instances
+    ArduinoMega   ConradMultiRelais   HeatingControlBoard   # used by SignalProcessor instances
       
     
+    object
+      |
+    ResouceScope
     
+
     list
       |
     ControlEngine
       
     
-    
-    SignalProcessor
+    object
       |
-    TemperatureMeasurement  RelaisMeasurement  DataSource  ThermicalSolarCollectorControl            HeatingControl         HeatingMixerControl  HeatPumpControl  VentilationControl  HeatPumpSolarValveControl  ManualSwitch  SwitchRelais  ThreeStateSwitchRelais
-                                                 |                                                     |
-                                               TickCounterSource  TemperatureSource  LightSource     DesiredValueForHeatingMixerControl
+    SignalProcessor
+      |       |
+      |     TemperatureMeasurement  RelaisMeasurement  DataSource  ThermicalSolarCollectorControl            HeatingControl         
+      |                                                  |                                                     |
+      |                                                TickCounterSource  TemperatureSource  LightSource     DesiredValueForHeatingMixerControl
+      |
+    HeatingMixerControl  HeatPumpControl  VentilationControl  HeatPumpSolarValveControl  ManualSwitch  ManualSwitchAutoReset  SwitchRelais  ThreeStateSwitchRelais  ValueSwitch  NotNode  OrNode  AndNode  OperatingHoursCounter  EnableTimer  Watchdog  Timeline
     
+    =======================================================================
     
     ControlEngine = [SignalProcessor,...]	# manages a list of SignalProcessor objects, is the time processor --> clock_tick()
     
@@ -212,8 +222,8 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.7.3"
-__date__    = "16.5.2023"
+__version__ = "2.8.0"
+__date__    = "10.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -456,6 +466,12 @@ class Device(object):
 # *************************************************************************
 class ResouceScope(object):
 
+    """
+        Implements a Context Manager for a resource.
+        Used for accessing a Device using a RS232 resource.
+        RS232 port will be opened if needed and closed if not needed anymore.
+    """
+
     def __init__(self, aResource, use_exclusive=False):
         #print("INIT ResourceScope")
         self.aResource = aResource
@@ -465,6 +481,7 @@ class ResouceScope(object):
         #print("__enter__ ResourceScope")
         if not self.aResource.is_open():
             self.aResource.open()
+# TODO: ggf. reset() nach open() aufrufen?            
         return self.aResource
     
     def __exit__(self, type, value, traceback):
@@ -1571,6 +1588,53 @@ class NotNode(SignalProcessor):     # new since 4.1.2019
         return 1 if int(value)==0 else 0
  
 # *************************************************************************
+class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024 
+
+    def __init__(self,sName,aNode):
+        super(OperatingHoursCounter,self).__init__(sName)
+        self.aNode = aNode
+        self.dOperatingHoursCounter = 0.0
+        self.iCurrentTickCount = 0
+        self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
+        self._load_data()
+
+    def clock_tick(self):        
+        is_activated = self.aNode.is_activated()
+        if is_activated:
+            self.dOperatingHoursCounter += ControlEngine.DELAY
+            self.iCurrentTickCount += 1
+            if self._check_for_write_data():
+                self._save_data()
+        return self.dOperatingHoursCounter
+
+    def _load_data(self):
+        sFileName = self._get_filename()
+        if os.path.exists(sFileName):
+            ok,data = read_data(sFileName)
+            if ok:
+                self._set_persistence_data(data)
+
+    def _save_data(self):
+        data = self._get_persistence_data()
+        write_data(self._get_filename(), data)
+
+    def _set_persistence_data(self,data):
+        self.dOperatingHoursCounter = data[0]
+
+    def _get_persistence_data(self):
+        return (self.dOperatingHoursCounter,)
+
+    def _get_filename(self):
+        return add_sdcard_path_if_available(g_sPersistencePath+os.sep+self.get_name()+PERSISTENCE_EXTENSION)
+
+    # write the persistent value to file only every 60 seconds, or every 5 minutes...
+    def _check_for_write_data(self):
+        if self.iCurrentTickCount >= self.iMaxTickCountForSave:
+            self.iCurrentTickCount = 0
+            return True
+        return False
+
+# *************************************************************************
 class TemperatureSource(DataSource):
 
     def __init__(self,sName,fcnDataSource=None,dValueForJumpCheck=None,bCheckForShift=False):
@@ -1914,6 +1978,7 @@ class HeatPumpControl(SignalProcessor):
     INPUT_ID_OUTGOING_AIR = "outgoingair"       # == CONVERTER
     INPUT_ID_MANUAL_SWITCH = "manual_switch"
     
+# TODO -> nicht einschalten, falls Solar-Pumpe ggf. schon laenger laeuft oder die oberste Temperatur noch ueber einem Schwellwert von xy Grad liegt -> Optimierung fuer dein Einsatz von der Waermepumpe !
     TEMPERATURE_SWITCH_ON  = 37.5           # until 2.12.2010: 36.0
     TEMPERATURE_SWITCH_OFF = 41.0
     TEMPERATURE_OUTGOING_AIR = -0.5 #2.8 # PATCH FOR DEFECT CONVERTER TEMPERATURE SENSOR -0.5         # until 2.12.2010: 0.0          # Vereisungs Schutz
@@ -2389,6 +2454,11 @@ SWITCH_VENTILATION                  = "SWITCH_VENTILATION"              # Relais
 SWITCH_HEATPUMP_SOLAR_VALVE         = "SWITCH_HEATPUMP_SOLAR_VALVE"         # not used any more -> mapped to virtual port -> channel used to control Bypass Lueftungsanalge
 SWITCH_BOOSTER                      = "SWITCH_BOOSTER"                  # Relais 6    -> neu: Zirkulationspumpe fuer Waermepumpe
 
+# operating hours counters
+OPERATING_HOURS_HEATPUMP            = "OPERATING_HOURS_HEATPUMP"
+OPERATING_HOURS_MOTOR_HEATING       = "OPERATING_HOURS_MOTOR_HEATING"
+OPERATING_HOURS_MOTOR_SOLAR         = "OPERATING_HOURS_MOTOR_SOLAR"
+
 # others
 TICK_COUNTER                        = "TICK_COUNTER"
 WATCHDOG                            = "WATCHDOG"
@@ -2536,6 +2606,7 @@ def configure_control():
     aSolarControl = ThermicalSolarCollectorControl(SOLAR_CONTROL)     
     aManualSwitchSolarMotor = ManualSwitch(MANUAL_SWITCH_MOTOR_SOLAR)
     aSolarMotor = SwitchRelais(SWITCH_MOTOR_SOLAR,aRelaisMeasurement.switch_port_fcn(0))                       # Pumpe fuer Solarkreislauf
+    aOperatingHoursMotorSolar = OperatingHoursCounter(OPERATING_HOURS_MOTOR_SOLAR,aSolarMotor)
     aSolarControl.connect_input(aTempSolar,aSolarControl.INPUT_ID_SOLAR)
     aSolarControl.connect_input(aTempSolarBuffer,aSolarControl.INPUT_ID_BUFFER)
     aSolarControl.connect_input(aManualSwitchSolarMotor,aSolarControl.INPUT_ID_MANUAL_RESET)
@@ -2597,6 +2668,7 @@ def configure_control():
     aHeatingIntervalDateAndValue = AndNode(ENABLE_HEATING_MOTOR_DATE_AND_VALUE,[aHeatingIntervalValue, aHeatingIntervalDate]) # aHeatingIntervalValue and (aDateTimer or aHeatingIntervalDateDisableSwitch)
     aHeatingManualOrAntiFixInterval = OrNode(ENABLE_HEATING_MOTOR_ALL_INPUTS,[aManualSwitchHeatingMotor, aAntiFixingSwitchTimer])  # DIESE ZEILE IST GEPATCHED !!! aManualSwitchHeatingMotor                            ####################################
     aHeatingMotor = SwitchRelais(SWITCH_MOTOR_HEATING,aRelaisMeasurement.switch_port_fcn(1))
+    aOperatingHoursMotorHeating = OperatingHoursCounter(OPERATING_HOURS_MOTOR_HEATING,aHeatingMotor)
     aHeatingMotor.connect_input(aHeatingControl,aHeatingMotor.INPUT_ID)
     aHeatingMotor.connect_input(aHeatingManualOrAntiFixInterval,aHeatingMotor.INPUT_ID_MANUAL)
     aHeatingMotor.connect_input(aHeatingIntervalDateAndValue,aHeatingMotor.ENABLE_ID)   # until 17.1.2017: aEnableTimer
@@ -2640,6 +2712,7 @@ def configure_control():
             (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
             (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
     aSwitchHeatPump = SwitchRelais(SWITCH_HEATPUMP,aRelaisMeasurement.switch_port_fcn(2))
+    aOperatingHoursHeatPump = OperatingHoursCounter(OPERATING_HOURS_HEATPUMP,aSwitchHeatPump)
     aHeatPummpControl.connect_input(aTempBuffer2,aHeatPummpControl.INPUT_ID_BUFFER)
     aHeatPummpControl.connect_input(aTempConverter,aHeatPummpControl.INPUT_ID_OUTGOING_AIR)
     aHeatPummpControl.connect_input(aManualSwitchHeatPump,aHeatPummpControl.INPUT_ID_MANUAL_SWITCH)
@@ -2747,11 +2820,15 @@ def configure_control():
     aControlEngine.append(aSwitchHeatPumpSolarValve)
     aControlEngine.append(aSwitchBooster)                   # TODO: GULP --> einschalte wenn Waermepumpe laeuft ! 
 # TODO --> Beobachter Objekt implementieren um festzustelen dass Waermepumpe laeuft --> HEAT_CREATOR > 25 Grad ==> Waermepumpe laeuft, HEAT_CREATOR < 20 fuer laengere Zeit ==> Waermepumpe aus    
-        
+    
+    aControlEngine.append(aOperatingHoursHeatPump)
+    aControlEngine.append(aOperatingHoursMotorHeating)
+    aControlEngine.append(aOperatingHoursMotorSolar)
+
     aControlEngine.append(aIngoingAir)          # new since 7.11.2010: moved to this position for new CONVERTER value 
-
+    
     aControlEngine.append(aTimeline)
-
+    
     aControlEngine.append(aRelaisMeasurement)   # update state of relais manager after tick    
     
     aControlEngine.append(aCounter)

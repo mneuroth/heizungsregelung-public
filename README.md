@@ -257,7 +257,7 @@ Historie
 
 Datum        | Aktion
 -------------|----------------
-18.4.2010    | Beginn der Tests für Version 1 mit Arduino Mega, Conrad Relais Karte und handgelötete Euro-Platinen
+18.4.2010    | Beginn der Tests für Version 1 mit Arduino Mega, Conrad Relais Karte und handgelöteten Euro-Platinen (für Spannungsteiler und RS232 Kommunikation)
 7.11.2010    | Inbetriebnahme Hardware Version 1
 10.2013      | HTML Seite zur Steuerung realisiert
 10.1.2017    | HeatingBoard Platine V1.0 bestellt
@@ -269,10 +269,12 @@ Datum        | Aktion
 26.3.2023    | Begonnen mit Docker Installation, dazu Aktualisierung auf Debian 11 (Bullseye) und Umstellung auf Python 3.9.2
  3.4.2023    | Begonnen mit der Unterstützung der Socket Kommunikation (für Dockerisierung)
  5.4.2023    | Begonnen mit der Unterstützung des prometheus_exporter.py
+ 7.4.2023    | Update auf neues Raspbian OS Image (11 bullseye) und damit Umstellung auf Python 3.9.2
 22.4.2023    | Erweiterung der Dokumentation für die Platine und für das Passiv Haus
  7.5.2023    | Öffentliches GitHub Projekt heizungsregelung-public angelegt
  5.2023      | Verbesserung der Robustheit und Wiederverbindungsmöglichkeit der RS232 Kommunikation
 23.5.2023    | Verwende stabilere PL011 anstatt miniuart für RS232 Kommunikation
+10.1.2024    | Implemetierung der Betriebssunden Zähler
 
 Funktionen der Heizungsregelung
 -------------------------------
@@ -322,7 +324,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
     - Benenne den USB-Memory-Stick in `USB_DATA` -> es sollte folgender Pfad verfügbar sein `/media/pi/USB_DATA/heating_control`
 	- Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
 	    - `> curl -fsSL https://get.Docker.com -o get-Docker.sh`
-	    - `> sudo sh get-Docker.s`
+	    - `> sudo sh get-Docker.sh`
 	    - `> sudo usermod -aG docker $USER`
 	    - `> newgrp docker`
 	    - `> docker run hello-world`
@@ -330,6 +332,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 	    - `> docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest`
 		- Prometheus Node Exporter einrichten (aus Raspbian Repository): `sudo apt-get install prometheus-node-exporter`		
 		- Prometheus Docker Container starten: `docker run -d -p 9090:9090 --restart=always --name prom -v /home/pi/Dokumente/projects/heizungsregelung/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
+            - ggf. mit Option für das Kommando `prom/prometheus`: `--storage.tsdb.retention.time=30d`
 		- Grafana Docker Container starten:`docker run -d --restart=always --name=grafana -p 3000:3000 grafana/grafana`
 		    - [Grafana Dashboard für Pi und Docker Monitoring](https://grafana.com/grafana/dashboards/15120-raspberry-pi-docker-monitoring/)
 			- [Grafana Dashboard für Prometheus Node Exporter Monitoring](https://grafana.com/grafana/dashboards/9894-node-exporter-0-16-for-prometheus-monitoring-display-board/)
