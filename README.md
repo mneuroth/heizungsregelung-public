@@ -274,7 +274,7 @@ Datum        | Aktion
  7.5.2023    | Öffentliches GitHub Projekt heizungsregelung-public angelegt
  5.2023      | Verbesserung der Robustheit und Wiederverbindungsmöglichkeit der RS232 Kommunikation
 23.5.2023    | Verwende stabilere PL011 anstatt miniuart für RS232 Kommunikation
-10.1.2024    | Implemetierung der Betriebssunden Zähler
+10.1.2024    | Implemetierung der Betriebsstunden Zähler
 
 Funktionen der Heizungsregelung
 -------------------------------
