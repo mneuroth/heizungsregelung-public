@@ -223,7 +223,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.0"
-__date__    = "10.1.2024"
+__date__    = "12.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -2821,10 +2821,6 @@ def configure_control():
     aControlEngine.append(aSwitchBooster)                   # TODO: GULP --> einschalte wenn Waermepumpe laeuft ! 
 # TODO --> Beobachter Objekt implementieren um festzustelen dass Waermepumpe laeuft --> HEAT_CREATOR > 25 Grad ==> Waermepumpe laeuft, HEAT_CREATOR < 20 fuer laengere Zeit ==> Waermepumpe aus    
     
-    aControlEngine.append(aOperatingHoursHeatPump)
-    aControlEngine.append(aOperatingHoursMotorHeating)
-    aControlEngine.append(aOperatingHoursMotorSolar)
-
     aControlEngine.append(aIngoingAir)          # new since 7.11.2010: moved to this position for new CONVERTER value 
     
     aControlEngine.append(aTimeline)
@@ -2837,7 +2833,16 @@ def configure_control():
         aControlEngine.append(aWatchdog)
     if bNewHeatingcontrolBoardDetected:
         aControlEngine.append(aTestSensor)
-    
+
+    aControlEngine.append(aOperatingHoursHeatPump)
+    aControlEngine.append(aOperatingHoursMotorHeating)
+    aControlEngine.append(aOperatingHoursMotorSolar)
+
+    # *** IMPORTANT: ***
+    # add new control items at the end of this list,
+    # otherwise the data format of the csv file will be not compatible
+    # new columns at the end of the row are backward compatible !
+
     return aControlEngine
 
 LINE = "======================================================================"
