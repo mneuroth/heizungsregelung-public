@@ -223,7 +223,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.0"
-__date__    = "12.1.2024"
+__date__    = "13.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -1590,17 +1590,18 @@ class NotNode(SignalProcessor):     # new since 4.1.2019
 # *************************************************************************
 class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024 
 
-    def __init__(self,sName,aNode):
+    def __init__(self,sName,aNode,init_value=0.0):
         super(OperatingHoursCounter,self).__init__(sName)
         self.aNode = aNode
-        self.dOperatingHoursCounter = 0.0
+        self.dOperatingHoursCounter = init_value
         self.iCurrentTickCount = 0
         self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
         self._load_data()
 
-    def clock_tick(self):        
-        is_activated = self.aNode.is_activated()
-        if is_activated:
+    def clock_tick(self):
+        current_value = self.aNode.get_value()
+        is_running = int(current_value) == 1 if current_value is not None else False
+        if is_running:
             self.dOperatingHoursCounter += ControlEngine.DELAY
             self.iCurrentTickCount += 1
             if self._check_for_write_data():
@@ -2712,7 +2713,7 @@ def configure_control():
             (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
             (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
     aSwitchHeatPump = SwitchRelais(SWITCH_HEATPUMP,aRelaisMeasurement.switch_port_fcn(2))
-    aOperatingHoursHeatPump = OperatingHoursCounter(OPERATING_HOURS_HEATPUMP,aSwitchHeatPump)
+    aOperatingHoursHeatPump = OperatingHoursCounter(OPERATING_HOURS_HEATPUMP,aSwitchHeatPump,init_value=227.0*60.0*60.0)    # 227 hours since 16.1.2024 until 13.1.2024 15:30
     aHeatPummpControl.connect_input(aTempBuffer2,aHeatPummpControl.INPUT_ID_BUFFER)
     aHeatPummpControl.connect_input(aTempConverter,aHeatPummpControl.INPUT_ID_OUTGOING_AIR)
     aHeatPummpControl.connect_input(aManualSwitchHeatPump,aHeatPummpControl.INPUT_ID_MANUAL_SWITCH)
