@@ -171,8 +171,8 @@ except NotImplementedError:
 
 # *************************************************************************
 
-__version__ = "1.6"
-__date__    = "12.1.2024"
+__version__ = "1.7"
+__date__    = "17.1.2024"
 
 # *************************************************************************
 
@@ -639,7 +639,7 @@ function JSRequest(name,val) {
         sc = "<table>"
         sc += "<tr><th>Name</th><th>Value</th></tr>"
         so = "<table>"
-        so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th></tr>"
+        so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th><th>Value Day Histogram</th></tr>"
         sp = "<table>"
         sp += "<tr><th>Name</th><th>Value</th></tr>"
         for e in data:
@@ -699,9 +699,11 @@ function JSRequest(name,val) {
             elif e.startswith("OPERATING_HOURS"):
                 so += "<tr>"
                 so += "<td>"+e+"</td>"
-                so += "<td>"+str(round(val, 1))+"</td>"
-                so += "<td>"+str(round(float(val)/3600.0, 2))+"</td>"
-                so += "<td>"+str(round(float(val)/3600.0/24.0, 2))+"</td>"
+                _val = val[0]
+                so += "<td>"+str(round(_val, 1))+"</td>"
+                so += "<td>"+str(round(float(_val)/3600.0, 2))+"</td>"
+                so += "<td>"+str(round(float(_val)/3600.0/24.0, 2))+"</td>"
+                so += "<td>"+str(val[1])+"</td>"
                 so += "</tr>"
             else:
                 sv += "<tr>"

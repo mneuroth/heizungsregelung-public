@@ -222,8 +222,8 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.8.0"
-__date__    = "13.1.2024"
+__version__ = "2.8.1"
+__date__    = "17.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -1590,15 +1590,20 @@ class NotNode(SignalProcessor):     # new since 4.1.2019
 # *************************************************************************
 class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024 
 
+    MAX_DAY_HISTOGRAM_LENGTH = 14
+
     def __init__(self,sName,aNode,init_value=0.0):
         super(OperatingHoursCounter,self).__init__(sName)
         self.aNode = aNode
         self.dOperatingHoursCounter = init_value
+        self.lstDayHistogram = []
+        self.aLastTickDate = datetime.datetime.now().date()
         self.iCurrentTickCount = 0
         self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
         self._load_data()
 
     def clock_tick(self):
+        current_tick_date = datetime.datetime.now().date()
         current_value = self.aNode.get_value()
         is_running = int(current_value) == 1 if current_value is not None else False
         if is_running:
@@ -1606,7 +1611,16 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
             self.iCurrentTickCount += 1
             if self._check_for_write_data():
                 self._save_data()
-        return self.dOperatingHoursCounter
+        if current_tick_date > self.aLastTickDate:
+            self._add_to_histogram(self.dOperatingHoursCounter)
+        self.aLastTickDate = current_tick_date
+        return (self.dOperatingHoursCounter,self.lstDayHistogram)
+
+    def _add_to_histogram(self,value):
+        if len(self.lstDayHistogram) >= self.MAX_DAY_HISTOGRAM_LENGTH:
+            # if list becomes to large -> remove oldes day value from list
+            del self.lstDayHistogram[len(self.lstDayHistogram)-1]
+        self.lstDayHistogram.append(value)
 
     def _load_data(self):
         sFileName = self._get_filename()
@@ -1621,9 +1635,11 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
 
     def _set_persistence_data(self,data):
         self.dOperatingHoursCounter = data[0]
+        if len(data)>1:
+            self.lstDayHistogram = data[1]
 
     def _get_persistence_data(self):
-        return (self.dOperatingHoursCounter,)
+        return (self.dOperatingHoursCounter,self.lstDayHistogram)
 
     def _get_filename(self):
         return add_sdcard_path_if_available(g_sPersistencePath+os.sep+self.get_name()+PERSISTENCE_EXTENSION)
