@@ -2677,9 +2677,14 @@ def configure_control():
     STOP_HEATING_MOTOR_TIME1 = 14
     STOP_HEATING_MOTOR_TIME2 = 17
     STOP_HEATING_MOTOR_TIME3 = 3
-    aEnableTimer = EnableTimer(ENABLE_HEATING_MOTOR,[(datetime.time(8,00,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),[0,1,2,3,4]),    # bis 16.12.2011; 8:00 --> 15 Uhr bis 31.1.2017: --> 17:00 Uhr
-            (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(STOP_HEATING_MOTOR_TIME1,0,0),[0,1,2,3,4]),                           # 29.1.2022 -> keine Heizung, wenn Waermepumpen Strom ausgeschaltet ist !
-            (datetime.time(9,00,0),datetime.time(STOP_HEATING_MOTOR_TIME2,00,0),[5,6]),                                                                                             # bis 16.12.2011; 9:30 --> 15 Uhr
+    # *** Heatingpump connected to Waermepumenstrom Zaehler -> Ausschaltzeiten zu Stosszeiten ***
+    # aEnableTimer = EnableTimer(ENABLE_HEATING_MOTOR,[(datetime.time(8,00,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),[0,1,2,3,4]),    # bis 16.12.2011; 8:00 --> 15 Uhr bis 31.1.2017: --> 17:00 Uhr
+    #         (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(STOP_HEATING_MOTOR_TIME1,0,0),[0,1,2,3,4]),                           # 29.1.2022 -> keine Heizung, wenn Waermepumpen Strom ausgeschaltet ist !
+    #         (datetime.time(9,00,0),datetime.time(STOP_HEATING_MOTOR_TIME2,00,0),[5,6]),                                                                                             # bis 16.12.2011; 9:30 --> 15 Uhr
+    #         (datetime.time(21,00,0),datetime.time(23,59,59,999999)),
+    #         (datetime.time(0,0,0),datetime.time(STOP_HEATING_MOTOR_TIME3,00,0))])  # test: (datetime.time(22,20,0),datetime.time(22,25,0)),# bis 16.12.2011; --> 3:30 Uhr bis 17.1.2017 --> 4:30 Uhr
+    aEnableTimer = EnableTimer(ENABLE_HEATING_MOTOR,[(datetime.time(8,00,0),datetime.time(STOP_HEATING_MOTOR_TIME1,0,0),[0,1,2,3,4]),    # ab 18.1.2024 HeatPump connected to house power -> no shutdown times needed
+            (datetime.time(9,00,0),datetime.time(STOP_HEATING_MOTOR_TIME2,00,0),[5,6]),
             (datetime.time(21,00,0),datetime.time(23,59,59,999999)),
             (datetime.time(0,0,0),datetime.time(STOP_HEATING_MOTOR_TIME3,00,0))])  # test: (datetime.time(22,20,0),datetime.time(22,25,0)),# bis 16.12.2011; --> 3:30 Uhr bis 17.1.2017 --> 4:30 Uhr
                                                                                                                     # bis 28.1.2020 --> 22:20 -> 4:30 Uhr
@@ -2748,13 +2753,15 @@ def configure_control():
     aTempRoom = TemperatureSource(ROOM,aTempMeasurement.get_channel_fcn(11))
     aHeatPummpControl = HeatPumpControl(HEATPUMP_CONTROL)
     aManualSwitchHeatPump = ManualSwitch(MANUAL_SWITCH_HEATPUMP)
+    # *** Heatingpump connected to Waermepumenstrom Zaehler -> Ausschaltzeiten zu Stosszeiten ***
     # time and weekday check needed --> Sa and So the voltage for the heating pump will allways be enabled
     # only Mo-Fr the heating pump voltage will be disabled from 11:30->13:00 and 17:30-->19:00
-    aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,28,59,999999)),
-            (datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,1,59,999999),[5,6]),
-            (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,28,59,999999)),
-            (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
-            (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
+    # aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,28,59,999999)),
+    #         (datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,1,59,999999),[5,6]),
+    #         (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,28,59,999999)),
+    #         (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
+    #         (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
+    aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(23,59,59,999999))])
     aSwitchHeatPump = SwitchRelais(SWITCH_HEATPUMP,aRelaisMeasurement.switch_port_fcn(2))
     aOperatingHoursHeatPump = OperatingHoursCounter(OPERATING_HOURS_HEATPUMP,aSwitchHeatPump,init_value=227.0*60.0*60.0)    # 227 hours since 16.1.2024 until 13.1.2024 15:30
     aHeatPummpControl.connect_input(aTempBuffer2,aHeatPummpControl.INPUT_ID_BUFFER)
