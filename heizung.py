@@ -126,6 +126,7 @@ import functools
 import pickle
 import math
 import traceback
+import signal
 
 import serial
 
@@ -223,7 +224,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "17.1.2024"
+__date__    = "18.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -460,6 +461,12 @@ class Device(object):
     def finish(self):
         """ Helper for resetting the hardware: 
             first finish (free) resources and than reconnect to resource.
+        """
+        pass
+
+    def run_persistence(self):
+        """ CTRL-C handling: 
+            write persistent data
         """
         pass
 
@@ -929,6 +936,11 @@ class ControlEngine(list):
         # delegate finish-call to all children
         for e in self:
             e.finish()
+
+    def run_persistence(self):
+        # delegate finish-call to all children
+        for e in self:
+            e.run_persistence()
         
     def _get_data_nodes(self):
         aData = {}
@@ -1120,6 +1132,9 @@ class SignalProcessor(object):
     def finish(self):
         #print "FINISH",self
         pass
+
+    def run_persistence(self):
+        self.aHistoryCache.run_persistence()
 
     def get_name(self):
         return self.sName
@@ -1602,6 +1617,9 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
         self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
         self._load_data()
 
+    def run_persistence(self):
+        self._save_data()
+
     def clock_tick(self):
         current_tick_date = datetime.datetime.now().date()
         current_value = self.aNode.get_value()
@@ -1805,6 +1823,9 @@ class DesiredValueForHeatingMixerControl(HeatingControl):
         self.aTickCount = 0
         self.aTickCountLastAction = 0
         self._load_data()
+
+    def run_persistence(self):
+        self._save_data()
 
     def _load_data(self):
         sFileName = self._get_filename()
@@ -2129,6 +2150,9 @@ class ManualSwitch(SignalProcessor):
         else:
             return None
                     
+    def run_persistence(self):
+        self._save_data()
+
     def _load_data(self):
         sFileName = self._get_filename()
         if os.path.exists(sFileName):
@@ -2291,6 +2315,9 @@ class ThreeStateSwitchRelais(SignalProcessor):
         self.bIsClosed = False
         self.iOpenCount = None  # count the ticks for which the mixer is opened
         self._load_data()
+
+    def run_persistence(self):
+        self._save_data()
 
     def _load_data(self):
         sFileName = self._get_filename()
@@ -2867,6 +2894,8 @@ nl = "\n"
 
 g_http_port_no = 80
 
+aControlEngine = None       # global variable for CTRL-C handler
+
 def run_control(thread_communication_context,aLock):
     """
         The heating control loop.
@@ -2884,6 +2913,8 @@ def run_control(thread_communication_context,aLock):
             #if not os.path.exists("data"): #os.access("data",os.W_OK):
             #    os.mkdir("data")
             aControlEngine = configure_control()
+            global g_aControlEngine
+            g_aControlEngine = aControlEngine
             bContinue = not aControlEngine.run(g_sLogFile,thread_communication_context,aLock)
             #print "STOP control engine !",bContinue,iCount
         except Exception as aExcp:
@@ -2895,6 +2926,7 @@ def run_control(thread_communication_context,aLock):
             append_to_file(sActFileName+".log",[LINE+nl+str(time.strftime("%d.%m.%Y;%H:%M:%S"))+nl+"CONTROL_EXCEPTION:"+str(aExcp)+" "+str(output.getvalue())],sPrefix="#")
             print( output.getvalue() )
             if aControlEngine is not None:
+                aControlEngine.run_persistence()
                 aControlEngine.finish()
                 aControlEngine = None
             time.sleep(5)       # give the hardware time to reset ?
@@ -2913,6 +2945,7 @@ def run_control(thread_communication_context,aLock):
     #print "STOP control server"
     append_to_logfile("STOP CONTROL_THREAD")
     if aControlEngine is not None:
+        aControlEngine.run_persistence()
         aControlEngine.finish()
     aControlEngine = None
 
@@ -3063,6 +3096,16 @@ def ShowUsage():
     print( "  -d : run without history cache" )
     print( "  -w : disable watchdog in python program" )
     print( "  -h : show this help" )
+
+def signal_handler(sig, frame):
+    try:
+        print('Ctrl+C pressed !') #,sig, frame)
+        g_aControlEngine.run_persistence()
+    except Exception as exc:
+        print("EXCEPTION in signal handler:", exc)
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 # *************************************************************************
 

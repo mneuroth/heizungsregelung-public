@@ -123,7 +123,7 @@ function drawCanvas() {
 """
 
 import time
-import datetime
+#import datetime
 import sys
 import os
 import os.path
@@ -172,7 +172,7 @@ except NotImplementedError:
 # *************************************************************************
 
 __version__ = "1.7"
-__date__    = "17.1.2024"
+__date__    = "18.1.2024"
 
 # *************************************************************************
 
@@ -639,7 +639,7 @@ function JSRequest(name,val) {
         sc = "<table>"
         sc += "<tr><th>Name</th><th>Value</th></tr>"
         so = "<table>"
-        so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th><th>Value Day Histogram</th></tr>"
+        so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th><th>Value Day Histogram [h]</th></tr>"
         sp = "<table>"
         sp += "<tr><th>Name</th><th>Value</th></tr>"
         for e in data:
@@ -703,7 +703,13 @@ function JSRequest(name,val) {
                 so += "<td>"+str(round(_val, 1))+"</td>"
                 so += "<td>"+str(round(float(_val)/3600.0, 2))+"</td>"
                 so += "<td>"+str(round(float(_val)/3600.0/24.0, 2))+"</td>"
-                so += "<td>"+str(val[1])+"</td>"
+                delta_histogram = []
+                max = len(val[1])
+                for i in range(max):  # is list of operating seconds counter
+                    if i+1 < max:
+                        value = val[1][i+1] - val[1][i]
+                        delta_histogram.append(str(round(float(value / 60.0 / 60.0), 2)))  # convert seconds into hours
+                so += "<td>"+str(delta_histogram)+"</td>"
                 so += "</tr>"
             else:
                 sv += "<tr>"

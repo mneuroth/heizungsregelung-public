@@ -133,6 +133,9 @@ class PlotHistoryCache(LimitedList,PipeNode):
         self._load_data()
         check_path(self.sPersitencePath)
         
+    def run_persistence(self):
+        self._save_data()
+
     def receive(self,value):
         self.append(value)
         # forward value to next node
