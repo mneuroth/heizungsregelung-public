@@ -224,7 +224,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "18.1.2024"
+__date__    = "23.1.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -694,7 +694,8 @@ class Rs232Device(Device):
             except UnicodeDecodeError as unierr:
                 ret = ret.decode("utf-8", errors='ignore')
                 # log is new since 4.2023 !
-                append_to_logfile(str(datetime.datetime.now())+": INFO in _readline(0): "+str(unierr)+" read="+str(ret))        
+                append_to_logfile(str(datetime.datetime.now())+": INFO in _readline(0): "+str(unierr)+" read="+str(ret))
+# TODO -> Synchronisiere Zustand zwischen Heizungsregelung und Heizungsplatine !!! -> siehe Problem vom 19.1.2024 -> HeatingControlBoard.update_status()
                 return ret
             except Exception as ex:
                 # log is new since 4.2023 !
@@ -763,7 +764,8 @@ class HeatingControlBoard(Rs232Device):
     def update_status(self):
         with ResouceScope(self,g_bExclusiveRs232) as device:
             device.write("READ_RELAIS;")
-            result = device.readline()     
+            result = device.readline()
+# TODO -> if read-status != current-status -> write current-status to board
             #print "update_status", result
             # process something like: Rel1=0;Rel2=1;Rel3=1;...;Rel12=0;
 # TODO --> update the cache...        
@@ -1094,8 +1096,15 @@ class ControlEngine(list):
                     #    sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,aActDate)
                     #    append_to_file(sActFileName,[str(aException)],sPrefix="#") # log exception as comment line
                     #    val = None
-                    e._push_value(val)         # set the actual value at the SignalProcessor node (for history of signal)
-                    aLineInfo.append(val)     # save the actual value for output to file
+                    _val = val
+                    # Improvement 23.1.2024:
+                    # if the value is a container, just use the first element of the container,
+                    # the rest of the content in the container are calculated data used for viewers
+                    # i. e. OperatingHoursCounter returns (counter, list(histogram_for_last_days)))
+                    if isinstance(_val, (list, tuple)):
+                        _val = _val[0] if len(_val) > 0 else _val
+                    e._push_value(_val)         # set the actual value at the SignalProcessor node (for history of signal)
+                    aLineInfo.append(_val)      # save the actual value for output to file
             # Bugfix 20.8.2010/12.10.2010 --> first append act data into actual csv file, after that update filename with new date for next data output
             # --> fix to remove first line in csv file with old date !
             if bNewFile:
@@ -1431,6 +1440,7 @@ class RelaisMeasurement(SignalProcessor):
             try:
                 ret = self.aRelaisRS232.update_status()
             except Exception as e:
+                append_to_logfile(f"ERROR in RelaisMeasurement.clock_tick() exception: {e} time:"+str(datetime.datetime.now()))
                 self.reset_relais()
                 if self.aRelaisRS232:
                     ret = self.aRelaisRS232.update_status()
