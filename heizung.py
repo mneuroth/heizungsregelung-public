@@ -1096,15 +1096,15 @@ class ControlEngine(list):
                     #    sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,aActDate)
                     #    append_to_file(sActFileName,[str(aException)],sPrefix="#") # log exception as comment line
                     #    val = None
-                    _val = val
+                    _val_for_csv_file = val
                     # Improvement 23.1.2024:
-                    # if the value is a container, just use the first element of the container,
+                    # if the value is a container, just use the first element of the container to write into the csv file,
                     # the rest of the content in the container are calculated data used for viewers
                     # i. e. OperatingHoursCounter returns (counter, list(histogram_for_last_days)))
-                    if isinstance(_val, (list, tuple)):
-                        _val = _val[0] if len(_val) > 0 else _val
-                    e._push_value(_val)         # set the actual value at the SignalProcessor node (for history of signal)
-                    aLineInfo.append(_val)      # save the actual value for output to file
+                    if isinstance(_val_for_csv_file, (list, tuple)):
+                        _val_for_csv_file = _val_for_csv_file[0] if len(_val_for_csv_file) > 0 else val
+                    e._push_value(val)         # set the actual value at the SignalProcessor node (for history of signal)
+                    aLineInfo.append(_val_for_csv_file)      # save the actual value for output to file
             # Bugfix 20.8.2010/12.10.2010 --> first append act data into actual csv file, after that update filename with new date for next data output
             # --> fix to remove first line in csv file with old date !
             if bNewFile:
