@@ -257,7 +257,7 @@ Historie
 
 Datum        | Aktion
 -------------|----------------
-18.4.2010    | Beginn der Tests für Version 1 mit Arduino Mega, Conrad Relais Karte und handgelöteten Euro-Platinen (für Spannungsteiler und RS232 Kommunikation)
+18.4.2010    | Beginn der Tests für Version 1 mit Friendly ARM, Arduino Mega, Conrad Relais Karte und handgelöteten Euro-Platinen (für Spannungsteiler und RS232 Kommunikation)
 7.11.2010    | Inbetriebnahme Hardware Version 1
 10.2013      | HTML Seite zur Steuerung realisiert
 10.1.2017    | HeatingBoard Platine V1.0 bestellt
@@ -336,6 +336,8 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 		- Grafana Docker Container starten:`docker run -d --restart=always --name=grafana -p 3000:3000 grafana/grafana`
 		    - [Grafana Dashboard für Pi und Docker Monitoring](https://grafana.com/grafana/dashboards/15120-raspberry-pi-docker-monitoring/)
 			- [Grafana Dashboard für Prometheus Node Exporter Monitoring](https://grafana.com/grafana/dashboards/9894-node-exporter-0-16-for-prometheus-monitoring-display-board/)
+            - [Grafana Dashboard für Heizungsregelung](4Prod-Heinzungsregelung-share-externaly.json)
+                - Verwende für Diagramme die `Prometheus` Datenbank als Datenquelle und zeige die benötigten `temp_*` und `switch_` Werte an
         - [Portainer für heizungsregelung](https://heizungsregelung:9443/#!/init/admin) -> user: admin / ??? (Portainer-Admin-Password)
 		- [Grafana für heizungsregelung](http://heizungsregelung:3000/) -> user: admin / ??? (Raspberry Pi Default User Password)
 		- [Prometheus für heizungsregelung](http://heizungsregelung:9090/)
