@@ -224,7 +224,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "23.1.2024"
+__date__    = "2.2.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -1646,8 +1646,8 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
 
     def _add_to_histogram(self,value):
         if len(self.lstDayHistogram) >= self.MAX_DAY_HISTOGRAM_LENGTH:
-            # if list becomes to large -> remove oldes day value from list
-            del self.lstDayHistogram[len(self.lstDayHistogram)-1]
+            # if list becomes to large -> remove oldes day value from list -> this is the first element
+            del self.lstDayHistogram[0]
         self.lstDayHistogram.append(value)
 
     def _load_data(self):
