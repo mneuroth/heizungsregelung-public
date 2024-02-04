@@ -224,7 +224,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "2.2.2024"
+__date__    = "4.2.2024"
 
 # *************************************************************************
 START_YEAR = 2010
@@ -1625,17 +1625,20 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
         self.aLastTickDate = datetime.datetime.now().date()
         self.iCurrentTickCount = 0
         self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
+        self.dLastTickPerfCounter = None
         self._load_data()
 
     def run_persistence(self):
         self._save_data()
 
     def clock_tick(self):
+        current_tick = time.perf_counter()
         current_tick_date = datetime.datetime.now().date()
         current_value = self.aNode.get_value()
         is_running = int(current_value) == 1 if current_value is not None else False
         if is_running:
-            self.dOperatingHoursCounter += ControlEngine.DELAY
+            self.dOperatingHoursCounter += ControlEngine.DELAY if self.dLastTickPerfCounter is None else current_tick-self.dLastTickPerfCounter
+            self.dLastTickPerfCounter = current_tick
             self.iCurrentTickCount += 1
             if self._check_for_write_data():
                 self._save_data()
