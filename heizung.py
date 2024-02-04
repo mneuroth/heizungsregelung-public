@@ -1132,7 +1132,7 @@ class SignalProcessor(object):
         self.aTimeline = []
         self.bActivated = True
         if g_bUseCache:
-            sPersitencePath = add_sdcard_path_if_available(g_sCachePath+os.sep+self.get_name()+PERSISTENCE_EXTENSION)
+            sPersitencePath = add_sdcard_path_if_available(g_sCachePath)
             cacheInfo = pipeprocessing.CreateAveragedHistoryCache(sName, sPersitencePath=sPersitencePath)
             self.aHistoryCache = cacheInfo[0]
             self.fcnValueProducer = cacheInfo[1]
