@@ -238,6 +238,7 @@ g_bUseCache = True
 g_bUseWatchdog = False
 g_sLogFile = "data/temperatures.csv"
 g_sPersistencePath = "persistence"
+g_sCachePath = "cache"
 g_actUsbRs232Devices = []
 
 SEP = ";"
@@ -1131,7 +1132,8 @@ class SignalProcessor(object):
         self.aTimeline = []
         self.bActivated = True
         if g_bUseCache:
-            cacheInfo = pipeprocessing.CreateAveragedHistoryCache(sName)
+            sPersitencePath = add_sdcard_path_if_available(g_sCachePath+os.sep+self.get_name()+PERSISTENCE_EXTENSION)
+            cacheInfo = pipeprocessing.CreateAveragedHistoryCache(sName, sPersitencePath=sPersitencePath)
             self.aHistoryCache = cacheInfo[0]
             self.fcnValueProducer = cacheInfo[1]
         else:

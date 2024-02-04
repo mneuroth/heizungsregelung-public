@@ -208,9 +208,6 @@ def NoneToInt(value):
 def CreateAveragedHistoryCache(sCacheName,cacheSize=240,averageCount=72,sPersitencePath="."+os.sep+"cache"):
     # 10 samples per hour --> 240 samples per day = 24h
     # 1 sample per 6 min --> average over 6*60/5 = 72
-#TODO --> fix path for new raspberry pi !    
-    if os.path.exists("/sdcard"):
-        sPersitencePath = "/sdcard/cache"
     cache = PlotHistoryCache(sCacheName,sPersitencePath,cacheSize)    
     averager = Averager(averageCount,cache)
     producer = PipeNode(averager)   
