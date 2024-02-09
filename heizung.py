@@ -224,8 +224,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "4.2.2024"
-
+__date__    = "9.2.2024"
 # *************************************************************************
 START_YEAR = 2010
 
@@ -1644,6 +1643,8 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
             self.iCurrentTickCount += 1
             if self._check_for_write_data():
                 self._save_data()
+        else:
+            self.dLastTickPerfCounter = None
         if current_tick_date > self.aLastTickDate:
             self._add_to_histogram(self.dOperatingHoursCounter)
         self.aLastTickDate = current_tick_date
