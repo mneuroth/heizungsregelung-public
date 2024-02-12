@@ -275,6 +275,7 @@ Datum        | Aktion
  5.2023      | Verbesserung der Robustheit und Wiederverbindungsmöglichkeit der RS232 Kommunikation
 23.5.2023    | Verwende stabilere PL011 anstatt miniuart für RS232 Kommunikation
 10.1.2024    | Implemetierung der Betriebsstunden Zähler
+11.2.2024    | Unterstützung für PV-Anlage hinzugefügt, Grafana Exporter realisiert und Grafana Dashboard erweitert
 
 Funktionen der Heizungsregelung
 -------------------------------
@@ -322,30 +323,32 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
             - `dtoverlay=pi3-miniuart-bt` oder neu: `dtoverlay=miniuart-bt`
             - `dtoverlay=pi3-disable-wifi`
     - Benenne den USB-Memory-Stick in `USB_DATA` -> es sollte folgender Pfad verfügbar sein `/media/pi/USB_DATA/heating_control`
-	- Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
-	    - `> curl -fsSL https://get.Docker.com -o get-Docker.sh`
-	    - `> sudo sh get-Docker.sh`
-	    - `> sudo usermod -aG docker $USER`
-	    - `> newgrp docker`
-	    - `> docker run hello-world`
-	    - `> docker volume create portainer_data`
-	    - `> docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest`
-		- Prometheus Node Exporter einrichten (aus Raspbian Repository): `sudo apt-get install prometheus-node-exporter`		
-		- Prometheus Docker Container starten: `docker run -d -p 9090:9090 --restart=always --name prom -v /home/pi/Dokumente/projects/heizungsregelung/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
+    - Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
+        - `> curl -fsSL https://get.Docker.com -o get-Docker.sh`
+        - `> sudo sh get-Docker.sh`
+        - `> sudo usermod -aG docker $USER`
+        - `> newgrp docker`
+        - `> docker run hello-world`
+        - `> docker volume create portainer_data`
+        - `> docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest`
+        - Prometheus Node Exporter einrichten (aus Raspbian Repository): `sudo apt-get install prometheus-node-exporter`		
+        - Prometheus Docker Container starten: `docker run -d -p 9090:9090 --restart=always --name prom -v /home/pi/Dokumente/projects/heizungsregelung/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
             - ggf. mit Option für das Kommando `prom/prometheus`: `--storage.tsdb.retention.time=30d`
-		- Grafana Docker Container starten:`docker run -d --restart=always --name=grafana -p 3000:3000 grafana/grafana`
-		    - [Grafana Dashboard für Pi und Docker Monitoring](https://grafana.com/grafana/dashboards/15120-raspberry-pi-docker-monitoring/)
-			- [Grafana Dashboard für Prometheus Node Exporter Monitoring](https://grafana.com/grafana/dashboards/9894-node-exporter-0-16-for-prometheus-monitoring-display-board/)
+            - Update: `prometheus.yml` liegt aus Zugriffs-Gründen unter folgendem Pfad: `/home/pi/docker/prometheus.yml`
+        - Grafana Docker Container starten:`docker run -d --restart=always --name=grafana -p 3000:3000 grafana/grafana`
+            - [Grafana Dashboard für Pi und Docker Monitoring](https://grafana.com/grafana/dashboards/15120-raspberry-pi-docker-monitoring/)
+            - [Grafana Dashboard für Prometheus Node Exporter Monitoring](https://grafana.com/grafana/dashboards/9894-node-exporter-0-16-for-prometheus-monitoring-display-board/)
             - [Grafana Dashboard für Heizungsregelung](4Prod-Heinzungsregelung-share-externaly.json)
                 - Verwende für Diagramme die `Prometheus` Datenbank als Datenquelle und zeige die benötigten `temp_*` und `switch_` Werte an
         - [Portainer für heizungsregelung](https://heizungsregelung:9443/#!/init/admin) -> user: admin / ??? (Portainer-Admin-Password)
-		- [Grafana für heizungsregelung](http://heizungsregelung:3000/) -> user: admin / ??? (Raspberry Pi Default User Password)
-		- [Prometheus für heizungsregelung](http://heizungsregelung:9090/)
-		- [Prometheus Linux Node Exporter](http://heizungsregelung:9100/)
-		- [Prometheus Heizungsregelung Node Exporter](http://heizungsregelung:9110/)
-	- Konfiguration des Raspberry Pi anpassen
-	   - Name: `heizungsregelung` -> Zugriff über http://heizungsregelung möglich
-	   - Schnittstellen aktivieren (Raspberry Pi Konfigurations-Menu):
+        - [Grafana für heizungsregelung](http://heizungsregelung:3000/) -> user: admin / ??? (Raspberry Pi Default User Password)
+        - [Prometheus für heizungsregelung](http://heizungsregelung:9090/) (Prometheus-Test im Browser)
+        - [Prometheus Linux Node Exporter](http://heizungsregelung:9100/) (Exporter-Test im Browser)
+        - [Prometheus Heizungsregelung Exporter](http://heizungsregelung:9110/) (Exporter-Test im Browser)
+        - [Prometheus PV-Anlage Exporter](http://heizungsregelung:9120/) (Exporter-Test im Browser)
+    - Konfiguration des Raspberry Pi anpassen
+       - Name: `heizungsregelung` -> Zugriff über http://heizungsregelung möglich
+       - Schnittstellen aktivieren (Raspberry Pi Konfigurations-Menu):
 		   - ssh
 		   - VNC
 		   - Serial Port

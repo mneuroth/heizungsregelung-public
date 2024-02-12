@@ -138,6 +138,8 @@ import socket
 import selectors
 import libserver
 
+from file_utils import *
+
 try:
     from StringIO import StringIO
 except:
@@ -235,12 +237,10 @@ g_bTest = False
 g_bExclusiveRs232 = False
 g_bUseCache = True
 g_bUseWatchdog = False
-g_sLogFile = "data/temperatures.csv"
 g_sPersistencePath = "persistence"
 g_sCachePath = "cache"
 g_actUsbRs232Devices = []
 
-SEP = ";"
 PERSISTENCE_EXTENSION = ".persistence"
 
 def process_for_pickle(s):
@@ -298,89 +298,6 @@ def set_use_cache(bValue):
 def set_use_watchdog(bValue):
     global g_bUseWatchdog
     g_bUseWatchdog = bValue
-
-def list_to_csv_line(aList):
-    s = ""
-    for e in aList:
-        if len(s)>0:
-            s += SEP
-        s += str(e) if e!=None else ""
-    return s
-
-def append_to_file(sFileName,aData,sPrefix="",sHeaderForNewFile=None):
-    if os.path.exists(sFileName):
-        aFile = open(sFileName,"a")
-    else:
-        #print "file",sFileName,"not found --> created!"
-        verify_path(sFileName)
-        aFile = open(sFileName,"w")
-    aFile.write(sPrefix+list_to_csv_line(aData)+"\n") 
-    aFile.close()
-
-def verify_path(sFileNameWithPath):
-    sNormPath = os.path.normpath(sFileNameWithPath)
-    sHead,sTail = os.path.split(sNormPath)
-    sDirs = sHead.split(os.sep)
-    sCheckPath = ""
-    for e in sDirs:
-        if e=="":               # if first item is empty --> handle as absolute path !
-            sCheckPath = "/"
-        sCheckPath += e
-        if not os.path.exists(sCheckPath): #os.access(sCheckPath,os.W_OK):
-            os.mkdir(sCheckPath)
-        sCheckPath += os.sep
-    return sNormPath
-    
-def two_digits(iNumber):
-    return "%02d" % (iNumber,)
-    
-def add_sdcard_path_if_available(sFileNameWithPath):
-    sRet = sFileNameWithPath
-    # IMPORTANT: to use the USB-Memory-Stick
-    # -> name the USB Stick to "USB_DATA" and create directory "heating_control" !
-#   heizung control is running as root !!!
-#   data_dir = "/media/"+getpass.getuser()+"/USB_DATA/heating_control"
-    data_dir = "/media/pi/USB_DATA/heating_control"
-    if os.path.exists(data_dir):
-        sRet = data_dir+"/"+sRet
-    elif os.path.exists("/sdcard"):
-        sRet = "/sdcard/"+sRet
-    return sRet
-
-def map_date_to_filename(sFileName,aOldDate=None):
-    bNewFile = False
-    now = datetime.datetime.today()
-    sHead,sTail = os.path.split(sFileName)
-    sName,sExt = os.path.splitext(sTail)
-    if is_debug():
-        # add test prefix to not interfere with real data file 
-        sName = 'test_'+sName
-    sNewFileName = sHead+os.sep+str(now.year)+os.sep+two_digits(now.month)+os.sep+sName+"_"+("%04d_%02d_%02d" % (now.year,now.month,now.day))+sExt
-    if aOldDate!=None and aOldDate.day!=now.day:   # is new date ? --> day changes ?
-        sNewFileName = verify_path(sNewFileName)
-        bNewFile = True
-    sNewFileName = add_sdcard_path_if_available(sNewFileName)
-    return (sNewFileName,now,bNewFile)
-
-def get_last_count_from_file(sFileName):
-    ret = None
-    aFile = open(sFileName,"r")
-    sData = aFile.readlines()
-    iIndex = len(sData)-1
-    while iIndex>=0 and ret==None:
-        sLine = sData[iIndex]
-        if not sLine.startswith("#") and len(sLine)>0:
-            aItems = sLine.split(SEP)
-            if len(aItems)>0:
-                ret = int(aItems[0])+1
-        iIndex -= 1    
-    aFile.close()
-    return ret if ret!=None else 0
-
-def append_to_logfile(sText):
-    sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile)
-    append_to_file(sActFileName+".log",[sText],sPrefix="#")
-    #print(sText)
     
 def find_win32_rs232_devices():
     ret = []
@@ -541,13 +458,13 @@ class Rs232Device(Device):
         self.write = lambda v : self.try_func(self._write,v)   
         self.sRs232Name = sRs232Name
         self.aRs232 = serial.Serial(sRs232Name,baudrate,bytesize,parity,stopbits,timeout)
-        append_to_logfile("CONSTRUCTOR Rs232Device() "+str(sRs232Name)+" "+str(self))
+        append_to_logfile("CONSTRUCTOR Rs232Device() "+str(sRs232Name)+" "+str(self),is_debug())
 #            self.reset()
             
     # WARNING: DO NOT USE __del__, because it disturbs the garbage collector while freeing resources ! see python documentation
     #def __del__(self):
     #    print "__DEL__","open=","None" if self.aRs232==None else self.aRs232.isOpen(),self,self.aRs232
-    #    append_to_logfile("!!! DESTRUCTOR Rs232Device() "+str(self.sRs232Name)+" "+str(self))
+    #    append_to_logfile("!!! DESTRUCTOR Rs232Device() "+str(self.sRs232Name)+" "+str(self),is_debug())
     #    if self.aRs232:
     #        self.aRs232.close()
     #    self.aRs232 = None
@@ -556,15 +473,15 @@ class Rs232Device(Device):
         try:
             return fcn(*args)
         except Exception as e:     # serial.SerialException
-            append_to_logfile(str(datetime.datetime.now())+": Exception (0) in try_func(): "+str(e)+" for function: "+str(fcn)+" args: "+str(args))
+            append_to_logfile(str(datetime.datetime.now())+": Exception (0) in try_func(): "+str(e)+" for function: "+str(fcn)+" args: "+str(args),is_debug())
             try:
                 self.reconnect()  
             except Exception as e2:
-                append_to_logfile(str(datetime.datetime.now())+": Exception (1) in try_func(): "+str(e2))
+                append_to_logfile(str(datetime.datetime.now())+": Exception (1) in try_func(): "+str(e2),is_debug())
                 try:
                     self.search_renamed_port() 
                 except Exception as e3:
-                    append_to_logfile(str(datetime.datetime.now())+": Exception (2) in try_func(): "+str(e3))
+                    append_to_logfile(str(datetime.datetime.now())+": Exception (2) in try_func(): "+str(e3),is_debug())
                     # if this following call still raises an exception 
                     # we must reconntect both rs232 devices again, because
                     # most probably we have two new usb-rs232 device names !
@@ -576,11 +493,11 @@ class Rs232Device(Device):
             #print("reopen")
             self.reconnect()  
         except Exception as e2:
-            append_to_logfile(str(datetime.datetime.now())+": Exception (1) in reopen(): "+str(e2))
+            append_to_logfile(str(datetime.datetime.now())+": Exception (1) in reopen(): "+str(e2),is_debug())
             try:
                 self.search_renamed_port() 
             except Exception as e3:
-                append_to_logfile(str(datetime.datetime.now())+": Exception (2) in reopen(): "+str(e3))
+                append_to_logfile(str(datetime.datetime.now())+": Exception (2) in reopen(): "+str(e3),is_debug())
                 # if this following call still raises an exception 
                 # we must reconntect both rs232 devices again, because
                 # most probably we have two new usb-rs232 device names !
@@ -607,7 +524,7 @@ class Rs232Device(Device):
             Check all existing serial ports for my original device,
             used after a reset of the USB Hub
         """
-        append_to_logfile("CHECK_ALL_PORTS "+str(self.sRs232Name)+" "+str(self))
+        append_to_logfile("CHECK_ALL_PORTS "+str(self.sRs232Name)+" "+str(self),is_debug())
         if not self._reopen(find_all_usb_rs232_devices()):
             raise Exception("Device is not the expected device (2) !")
 
@@ -616,7 +533,7 @@ class Rs232Device(Device):
             Try to find another serial port which might be the old one.
             Could be called if a USB error occured and the hub is reset.
         """
-        append_to_logfile("SEARCH_RENAMED_PORT "+str(self.sRs232Name)+" "+str(self))
+        append_to_logfile("SEARCH_RENAMED_PORT "+str(self.sRs232Name)+" "+str(self),is_debug())
         if not self._reopen(get_new_not_used_usb_rs232_devices(self.sRs232Name)):
             raise Exception("Device is not the expected device (1) !")
         
@@ -625,7 +542,7 @@ class Rs232Device(Device):
             Reconnect with serial port
         """
         self.reset()
-        append_to_logfile(str(datetime.datetime.now())+": RECONNECT "+str(self.sRs232Name)+" "+str(self))
+        append_to_logfile(str(datetime.datetime.now())+": RECONNECT "+str(self.sRs232Name)+" "+str(self),is_debug())
         if not self._reopen([self.sRs232Name]):
             raise Exception("Device is not the expected device (0) !")
         self.reset()
@@ -694,12 +611,12 @@ class Rs232Device(Device):
             except UnicodeDecodeError as unierr:
                 ret = ret.decode("utf-8", errors='ignore')
                 # log is new since 4.2023 !
-                append_to_logfile(str(datetime.datetime.now())+": INFO in _readline(0): "+str(unierr)+" read="+str(ret))
+                append_to_logfile(str(datetime.datetime.now())+": INFO in _readline(0): "+str(unierr)+" read="+str(ret),is_debug())
 # TODO -> Synchronisiere Zustand zwischen Heizungsregelung und Heizungsplatine !!! -> siehe Problem vom 19.1.2024 -> HeatingControlBoard.update_status()
                 return ret
             except Exception as ex:
                 # log is new since 4.2023 !
-                append_to_logfile(str(datetime.datetime.now())+": EXCEPTION in _readline(1): "+str(ex)+" read="+str(ret.decode("utf-8", errors='ignore')))
+                append_to_logfile(str(datetime.datetime.now())+": EXCEPTION in _readline(1): "+str(ex)+" read="+str(ret.decode("utf-8", errors='ignore')),is_debug())
                 return ""
         else:
             return ""
@@ -747,7 +664,7 @@ class HeatingControlBoard(Rs232Device):
     
     def __init__(self,sRs232Name,baudrate=19200,bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=None):
         super(HeatingControlBoard,self).__init__(sRs232Name,baudrate,bytesize,parity,stopbits,timeout)
-        append_to_logfile("CONSTRUCTOR HeatingControlBoard() "+str(sRs232Name)+" "+str(self))
+        append_to_logfile("CONSTRUCTOR HeatingControlBoard() "+str(sRs232Name)+" "+str(self),is_debug())
         self.cache = [None for i in range(16)]
 
     def ping(self):
@@ -813,7 +730,7 @@ class ArduinoMega(Rs232Device):
     
     def __init__(self,sRs232Name,baudrate=19200,bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=None):
         super(ArduinoMega,self).__init__(sRs232Name,baudrate,bytesize,parity,stopbits,timeout)
-        append_to_logfile("CONSTRUCTOR ArduinoMega() "+str(sRs232Name)+" "+str(self))
+        append_to_logfile("CONSTRUCTOR ArduinoMega() "+str(sRs232Name)+" "+str(self),is_debug())
         if self.is_ok():
             # after connecting with arduino via RS232 a reset of the arduino occures
             # give it a litle bit time for start of communication !
@@ -839,7 +756,7 @@ class ConradMultiRelais(Rs232Device):
     
     def __init__(self,sRs232Name,baudrate=19200,bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=None):
         super(ConradMultiRelais,self).__init__(sRs232Name,baudrate,bytesize,parity,stopbits,timeout)
-        append_to_logfile("CONSTRUCTOR ConradMultiRelais() "+str(sRs232Name)+" "+str(self))
+        append_to_logfile("CONSTRUCTOR ConradMultiRelais() "+str(sRs232Name)+" "+str(self),is_debug())
         self.aActValues = None
         self.iErrorCount = 0
         self._initialize()
@@ -858,7 +775,7 @@ class ConradMultiRelais(Rs232Device):
             self.aActValues = aActValues
             self.iErrorCount = 0
         else:
-            append_to_logfile("ERROR in relais.update_status() len="+str(iLenMsg)+" "+str(datetime.datetime.now()))
+            append_to_logfile("ERROR in relais.update_status() len="+str(iLenMsg)+" "+str(datetime.datetime.now()),is_debug())
             self.iErrorCount += 1
             if self.iErrorCount>5:      # until 26.10.2010 n=10, now n=5
                 raise Exception("Error in update_status --> can not read port status !")
@@ -1064,7 +981,7 @@ class ControlEngine(list):
         aDataHeader = ["tick_no","date","time"]
         for e in self:
             aDataHeader.append(e.get_name())
-        sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,None)
+        sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,is_debug(),None)
         append_to_file(sActFileName,aDataHeader,sPrefix="#")
         # process the system (endless)
         iCount = get_last_count_from_file(sActFileName)
@@ -1080,7 +997,7 @@ class ControlEngine(list):
                 print( "ALIVE:", str(datetime.datetime.now()), "; ", end='')
             # Bugfix 12.10.2010: get actual date/time object for determining time/date for output and output file
             # get actual date for next output of data
-            sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,aActDate)
+            sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,is_debug(),aActDate)
             # prepare item for single step/measurement output
             aLineInfo = [iCount,"%02d.%02d.%04d;%02d:%02d:%02d" % (aActDate.day,aActDate.month,aActDate.year,aActDate.hour,aActDate.minute,aActDate.second)]
             with aLock:
@@ -1093,7 +1010,7 @@ class ControlEngine(list):
 # TODO hier ggf. nicht alle Exceptions fangen, damit ein neustart der Anwendung bei ausfall der Hardware erfolgen kann...                    
                     #except Exception,aException:
                     #    print aException
-                    #    sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,aActDate)
+                    #    sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,is_debug(),aActDate)
                     #    append_to_file(sActFileName,[str(aException)],sPrefix="#") # log exception as comment line
                     #    val = None
                     _val_for_csv_file = val
@@ -1260,7 +1177,7 @@ class TemperatureMeasurement(SignalProcessor):
 # TODO --> wird das ueberhaupt noch benoetigt, da wir nun direkt bei der RS232 Kommunikation abfangen sollte dies hier nie mehr aufgerufen werden ?
     def reset_arduino(self):
         sRs232Name = self.aArduino.sRs232Name if self.aArduino else "???"
-        append_to_logfile("RESET_ARDUINO "+sRs232Name)
+        append_to_logfile("RESET_ARDUINO "+sRs232Name,is_debug())
         if self.aArduino:
             self.aArduino.reopen()
 
@@ -1337,8 +1254,8 @@ class TemperatureMeasurement(SignalProcessor):
             self.aActValuesT = [0 for i in range(iCount)]
             self.aActValuesT.append(0)
             self.aActValuesT.append(0)
-            append_to_logfile("EXCEPTION in _read_all "+str(aExc))
-            append_to_logfile("LINE=>"+str(sLine)+"< len="+str(len(sLine)))
+            append_to_logfile("EXCEPTION in _read_all "+str(aExc),is_debug())
+            append_to_logfile("LINE=>"+str(sLine)+"< len="+str(len(sLine)),is_debug())
             raise aExc
             return False,sLine       
 
@@ -1383,7 +1300,7 @@ class RelaisMeasurement(SignalProcessor):
 # TODO --> wird das ueberhaupt noch benoetigt, da wir nun direkt bei der RS232 Kommunikation abfangen sollte dies hier nie mehr aufgerufen werden ?
     def reset_relais(self):
         sRs232Name = self.aRelaisRS232.sRs232Name if self.aRelaisRS232 else "???"
-        append_to_logfile("RESET_RELAIS "+sRs232Name)
+        append_to_logfile("RESET_RELAIS "+sRs232Name,is_debug())
         if self.aRelaisRS232:
             self.aRelaisRS232.reopen()
         
@@ -1441,7 +1358,7 @@ class RelaisMeasurement(SignalProcessor):
             try:
                 ret = self.aRelaisRS232.update_status()
             except Exception as e:
-                append_to_logfile(f"ERROR in RelaisMeasurement.clock_tick() exception: {e} time:"+str(datetime.datetime.now()))
+                append_to_logfile(f"ERROR in RelaisMeasurement.clock_tick() exception: {e} time:"+str(datetime.datetime.now()),is_debug())
                 self.reset_relais()
                 if self.aRelaisRS232:
                     ret = self.aRelaisRS232.update_status()
@@ -2072,7 +1989,7 @@ class HeatPumpControl(SignalProcessor):
                 iNewValue = 0
                 self.iCountMeasBelowSafetySwitchOff = 0 
                 sNow = str(datetime.datetime.now())
-                append_to_logfile("ERROR: CONVERTER below 1 grad celsius ! "+sNow)
+                append_to_logfile("ERROR: CONVERTER below 1 grad celsius ! "+sNow,is_debug())
         else:
             # at least one measurement is above the safty limit --> reset counter !
             self.iCountMeasBelowSafetySwitchOff = 0 
@@ -2566,7 +2483,7 @@ def detect_control_hardware(aHeatingControlBoard):
         with ResouceScope(aHeatingControlBoard,g_bExclusiveRs232) as device:
             device.write("VERSION;")
             cmdResult = device.readline() # expected: VERSION=2.0 from 12.12.2017  or  VERSION=1.3 from 6.11.2010
-            append_to_logfile("--> VERSION: "+str(cmdResult))
+            append_to_logfile("--> VERSION: "+str(cmdResult),is_debug())
             print("Try to read VERSION:", str(cmdResult), "length=", len(cmdResult), "Device:", aHeatingControlBoard.sRs232Name)
             # 4.2023:after booting Raspberry Pi the first communication via RS232 does not work correctly...
             # see ASCII Codes: https://johndecember.com/html/spec/ascii.html
@@ -2586,7 +2503,7 @@ def configure_control():
     sNow = str(datetime.datetime.now())
     aLstDevices = find_all_usb_rs232_devices()
     #print "###### all rs232",aLstDevices,sNow
-    append_to_logfile("###### all rs232: "+str(aLstDevices)+" "+sNow)
+    append_to_logfile("###### all rs232: "+str(aLstDevices)+" "+sNow,is_debug())
     # try first the default com port --> use UART !
     
     bNewHeatingcontrolBoardDetected = True
@@ -2597,35 +2514,35 @@ def configure_control():
         # new HeatingControlBoard (firmware >= 2.0) or old combination ArduinoMega & ConradMultiRelais (firmware < 2.0)
         aHeatingControlBoard = HeatingControlBoard(DEVICE_RS232_HEATINGCONTROLBOARD,baudrate=19200,bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=5.0)
         bNewHeatingcontrolBoardDetected = detect_control_hardware(aHeatingControlBoard) 
-    append_to_logfile("--> HeatingControlBoard: "+str(aHeatingControlBoard))
+    append_to_logfile("--> HeatingControlBoard: "+str(aHeatingControlBoard),is_debug())
 
     if False:
         with ResouceScope(aHeatingControlBoard,g_bExclusiveRs232) as device:
             device.write("VERSION;")
             cmdResult = device.readline() # expected: VERSION=2.0 from 12.12.2017  or  VERSION=1.3 from 6.11.2010
-            append_to_logfile("--> VERSION: "+str(cmdResult))
+            append_to_logfile("--> VERSION: "+str(cmdResult),is_debug())
             # after booting Raspberry Pi the first communication via RS232 does not work correctly...
             # see: https://johndecember.com/html/spec/ascii.html
             if cmdResult.startswith("ERROR: unknown command: ;"):
                 device.write("VERSION;")
                 cmdResult = device.readline() # expected: VERSION=2.0 from 12.12.2017  or  VERSION=1.3 from 6.11.2010
-                append_to_logfile("--> second try VERSION: "+str(cmdResult))        
+                append_to_logfile("--> second try VERSION: "+str(cmdResult),is_debug())        
             if cmdResult.startswith("VERSION="):
                 sVersion = cmdResult[8:11]
                 if sVersion.startswith("1."):
                     bNewHeatingcontrolBoardDetected = False            
             else:
                 # something went wrong... (or test modus)
-                append_to_logfile("WARNING --> HeatingControlBoard: None")
+                append_to_logfile("WARNING --> HeatingControlBoard: None",is_debug())
                 aHeatingControlBoard = None
         
     if aHeatingControlBoard and bNewHeatingcontrolBoardDetected:
         with ResouceScope(aHeatingControlBoard,g_bExclusiveRs232) as device:
             device.write("RESTARTS;")
             cmdResult = device.readline()
-            append_to_logfile("--> Number of restarts: "+cmdResult)
+            append_to_logfile("--> Number of restarts: "+cmdResult,is_debug())
         
-    append_to_logfile("--> bNewHeatingcontrolBoardDetected: "+str(bNewHeatingcontrolBoardDetected))
+    append_to_logfile("--> bNewHeatingcontrolBoardDetected: "+str(bNewHeatingcontrolBoardDetected),is_debug())
     if bNewHeatingcontrolBoardDetected:
         aArduino = aHeatingControlBoard
         aRelaisManager = aHeatingControlBoard
@@ -2649,8 +2566,8 @@ def configure_control():
                 aArduino.close()
                 aLstDevices,aArduino = find_rs232_device_for_hardware_class(aLstDevices,ArduinoMega,baudrate=19200,bytesize=serial.EIGHTBITS,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,timeout=5.0)
     
-    append_to_logfile("--> TemperatureMeasurement: "+str(aArduino))
-    append_to_logfile("--> RelaisMeasurement: "+str(aRelaisManager))
+    append_to_logfile("--> TemperatureMeasurement: "+str(aArduino),is_debug())
+    append_to_logfile("--> RelaisMeasurement: "+str(aRelaisManager),is_debug())
     aTempMeasurement = TemperatureMeasurement("TEMP_MEAS",aArduino,bNewHeatingcontrolBoardDetected,bTestQualityOfADCs=False)    # proxy for Ardurino, to synchronize update of temperatures in processing engine/clock
     aRelaisMeasurement = RelaisMeasurement("RELAIS_MEAS",aRelaisManager)
     
@@ -2924,7 +2841,7 @@ def run_control(thread_communication_context,aLock):
         The heating control loop.
     """
     bContinue = True
-    sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile)
+    sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile,is_debug())
     append_to_file(sActFileName,[],sPrefix="#restart heizung.py "+str(datetime.datetime.today()))
     iCount = 0
     aControlEngine = None
@@ -2932,7 +2849,7 @@ def run_control(thread_communication_context,aLock):
         #if True:
         try:
             #print( "running control... count="+str(iCount) )
-            append_to_logfile("running control... count="+str(iCount))
+            append_to_logfile("running control... count="+str(iCount),is_debug())
             #if not os.path.exists("data"): #os.access("data",os.W_OK):
             #    os.mkdir("data")
             aControlEngine = configure_control()
@@ -2945,7 +2862,7 @@ def run_control(thread_communication_context,aLock):
             print( "EXCEPTION CONTROL",aExcp,iCount )
             output = StringIO()
             traceback.print_exc(file=output)
-            sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile)
+            sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile,is_debug())
             append_to_file(sActFileName+".log",[LINE+nl+str(time.strftime("%d.%m.%Y;%H:%M:%S"))+nl+"CONTROL_EXCEPTION:"+str(aExcp)+" "+str(output.getvalue())],sPrefix="#")
             print( output.getvalue() )
             if aControlEngine is not None:
@@ -2966,7 +2883,7 @@ def run_control(thread_communication_context,aLock):
                 import urllib.request as urllib2
             urllib2.urlopen("http://127.0.0.1:"+str(g_http_port_no)+"/;stop")
     #print "STOP control server"
-    append_to_logfile("STOP CONTROL_THREAD")
+    append_to_logfile("STOP CONTROL_THREAD",is_debug())
     if aControlEngine is not None:
         aControlEngine.run_persistence()
         aControlEngine.finish()
@@ -2991,10 +2908,10 @@ def run_server(bTest,bUseHttpDefaultPort,qWrite=None,qRead=None):
                                                                                               # restart server only if exception occured !
         except Exception as aExcp:
             print( "EXCEPTION SERVER",aExcp )
-            sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile)
+            sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile,is_debug())
             append_to_file(sActFileName,["SERVER_EXCEPTION:"+str(aExcp)],sPrefix="#")
     #print "STOP httpd server"
-    append_to_logfile("STOP HTTP_SERVER_THREAD")
+    append_to_logfile("STOP HTTP_SERVER_THREAD",is_debug())
     
 def run_rs232_test():
     """
@@ -3103,7 +3020,7 @@ def run(bRunWithThreads=False):
             sys.stdout.flush() 
             time.sleep(0.1)
         #print "STOP main process"
-        append_to_logfile("STOP MAIN PROCESS")
+        append_to_logfile("STOP MAIN PROCESS",is_debug())
     else:
         run_control(thread_communication_context,aLock)
     

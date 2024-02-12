@@ -3,10 +3,17 @@ lxterminal --command="/bin/bash --init-file '~/Dokumente/projects/heizungsregelu
 netstat -a | grep 42424
 while [ $? -eq 0 ]
 do
-    python -c "import time; print('waiting for available port 42424...'); time.sleep(5)"
+    python -c "import time; print('waiting for available port 42424 (heizung_exporter)...'); time.sleep(5)"
     netstat -a | grep 42424
 done
 lxterminal --command="/bin/bash --init-file '~/Dokumente/projects/heizungsregelung/start_exporter.sh'"
+netstat -a | grep 42425
+while [ $? -eq 0 ]
+do
+    python -c "import time; print('waiting for available port 42425 (pv_vacility_exporter)...'); time.sleep(5)"
+    netstat -a | grep 42425
+done
+lxterminal --command="/bin/bash --init-file '~/Dokumente/projects/heizungsregelung/start_pv_exporter.sh'"
 #./start_chromium.sh &
 ./start_firefox.sh &
 while true
