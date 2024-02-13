@@ -105,7 +105,7 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
 
     def _resize_list_if_needed(self, lst):
         if len(lst) > SingleTimelineGrowingDataTrackerWithDeltaValues.MAX_ELEMENTS:
-            lst = lst[len(lst)-SingleTimelineGrowingDataTrackerWithDeltaValues.MAX_ELEMENTS]
+            lst = lst[len(lst)-SingleTimelineGrowingDataTrackerWithDeltaValues.MAX_ELEMENTS:]
         return lst
 
     def _append_value_and_delta_value(self, timestamp, value, delta_value):
