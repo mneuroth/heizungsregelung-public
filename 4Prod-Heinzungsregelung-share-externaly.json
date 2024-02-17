@@ -501,7 +501,8 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"used_house_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
+                  "{__name__=\"used_house_delta_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}",
+                  "{__name__=\"pv_consumed_house_delta_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -594,11 +595,23 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "used_house_energy",
+          "expr": "used_house_delta_energy",
           "hide": false,
           "legendFormat": "__auto",
           "range": true,
           "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "pv_consumed_house_delta_energy",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "F"
         }
       ],
       "title": "PV Anlage Energie",
@@ -667,7 +680,8 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"used_house_power\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
+                  "{__name__=\"yield_delta_power\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}",
+                  "{__name__=\"pv_consumed_house_delta_power\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -765,6 +779,18 @@
           "legendFormat": "__auto",
           "range": true,
           "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "pv_consumed_house_delta_power",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "F"
         }
       ],
       "title": "PV Anlage Leistung",
@@ -833,7 +859,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"yield_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
+                  "{__name__=\"pv_consumed_house_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -943,13 +969,25 @@
           "legendFormat": "__auto",
           "range": true,
           "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "pv_consumed_house_energy",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "G"
         }
       ],
       "title": "PV Anlage accumulierte Energie",
       "type": "timeseries"
     }
   ],
-  "refresh": "",
+  "refresh": false,
   "revision": 1,
   "schemaVersion": 38,
   "style": "dark",
@@ -958,13 +996,13 @@
     "list": []
   },
   "time": {
-    "from": "now-2d",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "4Prod Heinzungsregelung",
   "uid": "aPa8n1Y4kY",
-  "version": 17,
+  "version": 18,
   "weekStart": ""
 }
