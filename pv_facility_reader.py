@@ -83,15 +83,15 @@ class PV_Facility:
         self.active_power_9 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.ACTIVE_POWER)
         self.reactive_power_10 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.REACTIVE_POWER)
 
-    # (1) grid ->
+    # (1) PV -> grid (== PV Export)
     def get_grid_exported_energy_day(self, index_from_last = -1):
         return self.grid_exported_energy_1.get_last_day_delta_value(index_from_last)
 
-    # (2) grid <-
+    # (2) House <- grid
     def get_grid_accumulated_energy_day(self, index_from_last = -1):
         return self.grid_accumulated_energy_2.get_last_day_delta_value(index_from_last)
 
-    # (3) PV ->
+    # (3) PV Yield -> (== PV to Grid + PV to House + PV to Akku Balance)
     def get_accumulated_yield_energy_day(self, index_from_last = -1):
         return self.accumulated_yield_energy_3.get_last_day_delta_value(index_from_last)
 
@@ -107,13 +107,13 @@ class PV_Facility:
     def get_storage_balance_day(self, index_from_last = -1):
         return self.get_storage_total_charge_day(index_from_last) - self.get_storage_total_discharge_day(index_from_last)
 
-    # (7) PV -> House
+    # (7) PV -> House (PV consumption house == PV Yield (3) - PV Export (1) - Accu Balance (6))
     def get_used_yield_enery_day(self, index_from_last = -1):
-        return self.get_accumulated_yield_energy_day(index_from_last) - self.get_grid_exported_energy_day(index_from_last) - self.get_storage_balance_daily(index_from_last)
+        return self.get_accumulated_yield_energy_day(index_from_last) - self.get_grid_exported_energy_day(index_from_last) - self.get_storage_balance_day(index_from_last)
     
-    # (8) House <-
+    # (8) House <- (== Consumption house = PV Yield (3) - PV Export (1) - Accu Balance (6) + Grid consumption house (2) == PV consumption house (7) + Grid consumption house (2))
     def get_total_used_energy_day(self, index_from_last = -1):
-        return self.get_grid_accumulated_energy_day(index_from_last) + self.get_used_yield_enery_daily(index_from_last)
+        return self.get_grid_accumulated_energy_day(index_from_last) + self.get_used_yield_enery_day(index_from_last)
 
     # - tägliche Einspeisung ins Netz             ok -> Delta (1)
     # - täglicher Bezug vom Netz                  ok -> Delta (2)
@@ -121,8 +121,26 @@ class PV_Facility:
     # - tägliches Akku laden                      ok -> Delta (4)
     # - tägliches Akku entladen                   ok -> Delta (5)
     # - tägliche Bilanz Akku (netto aufgeladen oder entladen)  Delta Akku geladen (4) - Delta Akku entladen (5) = Akku Bilanz (6)
-    # - täglicher Verbrauch von PV-Anlage         ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)
+    # - täglicher Verbrauch von PV-Anlage         ?  => PV Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)
     # - täglicher Verbrauch des Hauses            ?  => Bezug vom Netz (2) + Verbrauch von PV-Anlage (7) = Verbrauch Haus (8)
+
+    def dump_last_day_values(self):
+        s = ''
+        s += f'Values for last day ({datetime.datetime.now().date()-datetime.timedelta(days=1)})'
+        s +=  '---------------------------------------------------------'
+        grid_export_kwh = self.grid_exported_energy_1.get_last_delta_value_multipied_with_delta_time()
+        grid_import_kwh = self.grid_accumulated_energy_2.get_last_delta_value_multipied_with_delta_time()
+        pv_yield_kwh = self.accumulated_yield_energy_3.get_last_delta_value_multipied_with_delta_time()
+        accu_balance_kwh = self.storage_total_charge_energy_4.get_last_delta_value_multipied_with_delta_time() - self.storage_total_discharge_energy_5.get_last_delta_value_multipied_with_delta_time()
+        s += f'PV Export to Grid:  {grid_export_kwh:8.2f} kWh\n'       # (1)
+        s += f'Consumed from Grid: {grid_import_kwh:8.2f} kWh\n'       # (2)
+        s += f'PV Yield:           {pv_yield_kwh:8.2f} kWh\n'          # (3)
+        s += f'Accu Balance:       {accu_balance_kwh:8.2f} kWh\n'      # (6)
+        pv_consumed_house_kwh = pv_yield_kwh - grid_export_kwh - accu_balance_kwh
+        s += f'PV consumed housed: {pv_consumed_house_kwh:8.2f} kWh\n' # (7)
+        house_consumed_kwh = grid_import_kwh + pv_consumed_house_kwh
+        s += f'House Consumed:     {house_consumed_kwh:8.2f} kWh\n'    # (8)
+        return s
 
     def _measure(self):
         if self.is_debugging:
