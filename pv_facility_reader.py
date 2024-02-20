@@ -2,9 +2,11 @@
     Read information from the PV facility.
 """
 
+import sys
 import asyncio
 import threading
 import time
+import signal
 
 import timeline_data_tracker as tldt
 
@@ -74,6 +76,7 @@ class PV_Facility:
 
     def __init__(self, is_debugging=False):
         self.is_debugging = is_debugging
+        self.is_shutdown = False
         self.grid_exported_energy_1 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.GRID_EXPORTED_ENERGY)
         self.grid_accumulated_energy_2 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.GRID_ACCUMULATED_ENERGY)
         self.accumulated_yield_energy_3 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.ACCUMULATED_YIELD_ENERGY)
@@ -82,6 +85,17 @@ class PV_Facility:
         self.input_power_8 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.INPUT_POWER)
         self.active_power_9 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.ACTIVE_POWER)
         self.reactive_power_10 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.REACTIVE_POWER)
+
+    def shutdown(self):
+        self.grid_exported_energy_1.shutdown()
+        self.grid_accumulated_energy_2.shutdown()
+        self.accumulated_yield_energy_3.shutdown()
+        self.storage_total_charge_energy_4.shutdown()
+        self.storage_total_discharge_energy_5.shutdown()
+        self.input_power_8.shutdown()
+        self.active_power_9.shutdown()
+        self.reactive_power_10.shutdown()
+        self.is_shutdown = True
 
     # (1) PV -> grid (== PV Export)
     def get_grid_exported_energy_day(self, index_from_last = -1):
@@ -126,12 +140,12 @@ class PV_Facility:
 
     def dump_last_day_values(self):
         s = ''
-        s += f'Values for last day ({datetime.datetime.now().date()-datetime.timedelta(days=1)})'
-        s +=  '---------------------------------------------------------'
-        grid_export_kwh = self.grid_exported_energy_1.get_last_delta_value_multipied_with_delta_time()
-        grid_import_kwh = self.grid_accumulated_energy_2.get_last_delta_value_multipied_with_delta_time()
-        pv_yield_kwh = self.accumulated_yield_energy_3.get_last_delta_value_multipied_with_delta_time()
-        accu_balance_kwh = self.storage_total_charge_energy_4.get_last_delta_value_multipied_with_delta_time() - self.storage_total_discharge_energy_5.get_last_delta_value_multipied_with_delta_time()
+        s += f'Values for last day ({datetime.datetime.now().date()-datetime.timedelta(days=1)})\n'
+        s +=  '--------------------------------\n'
+        grid_export_kwh = self.grid_exported_energy_1.get_last_day_delta_value()
+        grid_import_kwh = self.grid_accumulated_energy_2.get_last_day_delta_value()
+        pv_yield_kwh = self.accumulated_yield_energy_3.get_last_day_delta_value()
+        accu_balance_kwh = self.storage_total_charge_energy_4.get_last_day_delta_value() - self.storage_total_discharge_energy_5.get_last_day_delta_value()
         s += f'PV Export to Grid:  {grid_export_kwh:8.2f} kWh\n'       # (1)
         s += f'Consumed from Grid: {grid_import_kwh:8.2f} kWh\n'       # (2)
         s += f'PV Yield:           {pv_yield_kwh:8.2f} kWh\n'          # (3)
@@ -157,7 +171,8 @@ class PV_Facility:
         self.active_power_9.do_measurement(lambda: pv_infos[6].value)
         self.reactive_power_10.do_measurement(lambda: pv_infos[7].value)
 
-    def run(self):
+    def pv_run(self):
+        print("entered pv_run() thread")
         POSTFIX = "_delta"
         sFileName = g_sPvLogFile
         sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,self.is_debugging,None)
@@ -180,7 +195,7 @@ class PV_Facility:
                        self.reactive_power_10.get_signal_name()+POSTFIX
                        ]
         append_to_file(sActFileName,aDataHeader,sPrefix="#")
-        while True:
+        while not self.is_shutdown:
             self._measure()
             if self.is_debugging:
                 print("GRID_EXPORTED:", self.grid_exported_energy_1.signal_value_and_delta_cache)
@@ -218,18 +233,37 @@ class PV_Facility:
             if bNewFile:
                 append_to_file(sActFileName,aDataHeader,sPrefix="#")
             append_to_file(sActFileName,aLineInfo)
-            time.sleep(PV_Facility.DELAY)
+
+            delay_tick = 0.0
+            while not self.is_shutdown and delay_tick < PV_Facility.DELAY:
+                time.sleep(1.0)
+                delay_tick += 1.0
+
+        print("pv_run() thread stoped.")
 
     def loop(self):
-        while True:
+        while not self.is_shutdown and True:
             if self.is_debugging:
                 print(".", self.grid_accumulated_energy_2.get_last_value(), "/", self.storage_total_discharge_energy_5.get_last_value(), "/", self.storage_total_discharge_energy_5.get_last_delta_value(), ".", end="", flush=True)
             time.sleep(1)
 
 if __name__ == '__main__':
-    obj = PV_Facility()
+    obj = PV_Facility(is_debugging=True)
     print(obj)
-    measure_thread = threading.Thread(target=obj.run, args=())
+
+    def signal_handler(sig, frame):
+        try:
+            print('Ctrl+C pressed !') #,sig, frame)
+            obj.shutdown()
+            print('called shutdown.')
+        except Exception as exc:
+            print("EXCEPTION in signal handler:", exc)
+        print('exit(0) now...')
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    measure_thread = threading.Thread(target=obj.pv_run, args=())
     measure_thread.start()
     #obj.run()
     obj.loop()

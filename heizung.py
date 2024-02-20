@@ -123,7 +123,6 @@ import glob
 import datetime
 import time
 import functools
-import pickle
 import math
 import traceback
 import signal
@@ -226,7 +225,7 @@ elif os.name=="nt":
 
 # *************************************************************************
 __version__ = "2.8.1"
-__date__    = "9.2.2024"
+__date__    = "20.2.2024"
 # *************************************************************************
 START_YEAR = 2010
 
@@ -237,36 +236,7 @@ g_bTest = False
 g_bExclusiveRs232 = False
 g_bUseCache = True
 g_bUseWatchdog = False
-g_sPersistencePath = "persistence"
-g_sCachePath = "cache"
 g_actUsbRs232Devices = []
-
-PERSISTENCE_EXTENSION = ".persistence"
-
-def process_for_pickle(s):
-    if  sys.version_info.major==3:
-        #bs = bytes(s,"latin-1")  # for python 3
-        bs = bytes(s)  # for python 3
-    else:
-        bs = s # for python 2
-    return bs
-
-def write_data(sFileName, data):
-    s = pickle.dumps(data)
-    if  sys.version_info.major==3:
-        pipeprocessing.write_bytes_file(sFileName,s)
-    else:
-        pipeprocessing.write_text_file(sFileName,s)
-    
-def read_data(sFileName):
-    if  sys.version_info.major==3:
-        s = pipeprocessing.read_bytes_file(sFileName)
-    else:
-        s = pipeprocessing.read_text_file(sFileName)
-    if len(s)>0:
-        data = pickle.loads(process_for_pickle(s))
-        return (True,data)
-    return (False,None)
 
 def is_debug():
     return g_bDebug
@@ -3045,11 +3015,11 @@ def signal_handler(sig, frame):
         print("EXCEPTION in signal handler:", exc)
     sys.exit(0)
 
-signal.signal(signal.SIGINT, signal_handler)
-
 # *************************************************************************
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
+    
     bRun = True
     if '-s' in sys.argv:   # silent modus --> no debugging output !
         set_debug(False)

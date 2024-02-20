@@ -2,13 +2,20 @@
     Some helper functions to handle files.
 """
 
+import sys
 import os
 import datetime
+import pickle
 
 SEP = ";"
 
+PERSISTENCE_EXTENSION = ".persistence"
+
 g_sLogFile = "data/temperatures.csv"
 g_sPvLogFile = "data/pv_facility.csv"
+
+g_sPersistencePath = "persistence"
+g_sCachePath = "cache"
 
 def list_to_csv_line(aList):
     s = ""
@@ -92,3 +99,76 @@ def append_to_logfile(sText,is_debug):
     sActFileName,aActDate,bNewFile = map_date_to_filename(g_sLogFile,is_debug)
     append_to_file(sActFileName+".log",[sText],sPrefix="#")
     #print(sText)
+
+def process_for_pickle(s):
+    if  sys.version_info.major==3:
+        #bs = bytes(s,"latin-1")  # for python 3
+        bs = bytes(s)  # for python 3
+    else:
+        bs = s # for python 2
+    return bs
+
+def write_data(sFileName, data):
+    s = pickle.dumps(data)
+    if  sys.version_info.major==3:
+        write_bytes_file(sFileName,s)
+    else:
+        write_text_file(sFileName,s)
+    
+def read_data(sFileName):
+    if  sys.version_info.major==3:
+        s = read_bytes_file(sFileName)
+    else:
+        s = read_text_file(sFileName)
+    if len(s)>0:
+        data = pickle.loads(process_for_pickle(s))
+        return (True,data)
+    return (False,None)
+
+def ensure_path_for_file(sFileName):
+    path,name = os.path.split(sFileName)
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+def write_text_file(sFileName,data):
+    try:
+        ensure_path_for_file(sFileName)
+        f = open(sFileName,"w")
+        s = f.write(data)
+        f.close()
+    except Exception as exc:
+        print( "EXCEPTION in write_text_file()",exc )
+
+def read_text_file(sFileName):
+    try:
+        f = open(sFileName,"r")
+        s = f.read()
+        f.close()
+        return s
+    except Exception as exc:
+        print( "EXCEPTION in read_text_file()",exc )
+        return ""
+
+def write_bytes_file(sFileName,data):
+    try:
+        ensure_path_for_file(sFileName)
+        f = open(sFileName,"bw")
+        s = f.write(data)
+        f.close()
+    except Exception as exc:
+        print( "EXCEPTION in write_bytes_file()",exc )
+
+def read_bytes_file(sFileName):
+    try:
+        f = open(sFileName,"br")
+        s = f.read()
+        f.close()
+        return s
+    except Exception as exc:
+        print( "EXCEPTION in read_bytes_file()",exc )
+        return ""
+
+def check_path(sPath):
+    if not os.path.exists(sPath):
+        os.makedirs(sPath)
+

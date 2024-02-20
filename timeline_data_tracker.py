@@ -6,6 +6,9 @@
 import time
 import datetime
 import threading
+import os.path
+
+from file_utils import *
 
 g_value = 0.0
 
@@ -25,18 +28,58 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
 
     MAX_ELEMENTS = 512
 
+    EXTENSION = '.timeline'
+
     def __init__(self, signal_name, time_interval_in_sec = 60.0):
         self.signal_name = signal_name
         self.time_interval_in_sec = time_interval_in_sec
         self.signal_value_and_delta_cache = []  # items: (timestamp, integrated_value, delta_value)
         self.delta_day_cache = []               # items: (date, integrated_value, delta_value)
         self.last_measurement_date = datetime.datetime.now().date()
-        self.last_delta_measurement_value = None  # TODO: 0.0
+        self.last_delta_measurement_value = None
         self.last_day_measurement = None
         self._lock = threading.RLock()
-# TODO -> read last state
+
+        self.load_data()
 # TODO -> write to database
-        
+
+    def shutdown(self):
+        self.save_data()
+
+    def _get_persistence_full_file_name(self):
+        return add_sdcard_path_if_available(g_sPersistencePath+os.sep+self.get_signal_name()+SingleTimelineGrowingDataTrackerWithDeltaValues.EXTENSION)
+
+    def _set_persistence_data(self, data):
+        if data is not None:
+            self.signal_name = data[0]
+            self.time_interval_in_sec = data[1]
+            self.signal_value_and_delta_cache = data[2]
+            self.delta_day_cache = data[3]
+            self.last_measurement_date = data[4]
+            self.last_delta_measurement_value = data[5]
+            self.last_day_measurement = data[6]
+
+    def _get_persistence_data(self):
+        return (self.signal_name,
+                self.time_interval_in_sec,
+                self.signal_value_and_delta_cache,
+                self.delta_day_cache,
+                self.last_measurement_date,
+                self.last_delta_measurement_value,
+                self.last_day_measurement)
+
+    def load_data(self):
+        file_name = self._get_persistence_full_file_name()
+        if os.path.exists(file_name):
+            ok,data = read_data(file_name)
+            if ok:
+                self._set_persistence_data(data)
+
+    def save_data(self):
+        file_name = self._get_persistence_full_file_name()
+        data = self._get_persistence_data()
+        write_data(file_name, data)
+
     def get_signal_name(self):
         return self.signal_name
 
@@ -67,7 +110,7 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
             if len(self.delta_day_cache) == 0:
                 return (None, None, None)
             return self.delta_day_cache[index_from_last]
-        
+
     def get_last_day_delta_value(self, index_from_last = -1):
         return self._get_last_day_value(index_from_last)[2]
 

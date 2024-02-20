@@ -11,54 +11,9 @@ import os
 import os.path
 import pickle
 
+from file_utils import *
+
 CACHE_EXTENSION = ".cache"
-
-def ensure_path_for_file(sFileName):
-    path,name = os.path.split(sFileName)
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-def write_text_file(sFileName,data):
-    try:
-        ensure_path_for_file(sFileName)
-        f = open(sFileName,"w")
-        s = f.write(data)
-        f.close()
-    except Exception as exc:
-        print( "EXCEPTION in write_text_file()",exc )
-
-def read_text_file(sFileName):
-    try:
-        f = open(sFileName,"r")
-        s = f.read()
-        f.close()
-        return s
-    except Exception as exc:
-        print( "EXCEPTION in read_text_file()",exc )
-        return ""
-
-def write_bytes_file(sFileName,data):
-    try:
-        ensure_path_for_file(sFileName)
-        f = open(sFileName,"bw")
-        s = f.write(data)
-        f.close()
-    except Exception as exc:
-        print( "EXCEPTION in write_bytes_file()",exc )
-
-def read_bytes_file(sFileName):
-    try:
-        f = open(sFileName,"br")
-        s = f.read()
-        f.close()
-        return s
-    except Exception as exc:
-        print( "EXCEPTION in read_bytes_file()",exc )
-        return ""
-
-def check_path(sPath):
-    if not os.path.exists(sPath):
-        os.makedirs(sPath)
 
 # *************************************************************************    
 class LimitedList(list):

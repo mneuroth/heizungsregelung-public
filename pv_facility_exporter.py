@@ -4,7 +4,9 @@
 import time
 import datetime
 import os
+import sys
 import threading
+import signal
 
 from pv_facility_reader import PV_Facility
 
@@ -15,21 +17,26 @@ class AppMetrics:
     Representation of Prometheus metrics and loop to fetch and transform
     application metrics into Prometheus metrics.
     """
-    # - tägliche Einspeisung ins Netz             ok -> Delta (1)
-    # - täglicher Bezug vom Netz                  ok -> Delta (2)
-    # - tägliche Erzeugung PV-Anlage              ok -> Delta (3)
-    # - tägliches Akku laden                      ok -> Delta (4)
-    # - tägliches Akku entladen                   ok -> Delta (5)
+    # - tägliche Einspeisung ins Netz                ok -> Delta (1)
+    # - täglicher Bezug vom Netz                     ok -> Delta (2)
+    # - tägliche PV-Anlage &| Akku ins Haus &| Netz  ok -> Delta (3)
+    # - tägliches Akku laden                         ok -> Delta (4)
+    # - tägliches Akku entladen                      ok -> Delta (5)
     # - tägliche Bilanz Akku (netto aufgeladen oder entladen)  Delta Akku geladen (4) - Delta Akku entladen (5) = Akku Bilanz (6)
-    # - täglicher Verbrauch von PV-Anlage         ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)
-    # - täglicher Verbrauch des Hauses            ?  => Bezug vom Netz (2) + Verbrauch von PV-Anlage (7) = Verbrauch Haus (8)
+    # - täglicher Verbrauch von PV-Anlage            ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)  -> besser: (3) - (1)
+    # - täglicher Verbrauch des Hauses               ?  => Bezug vom Netz (2) + Verbrauch von PV-Anlage (7) = Verbrauch Haus (8)           -> besser: (2) + (3) - (1) = (2) + (7)
 
-    def __init__(self, polling_interval_seconds=60):
+    # - täglicher gesamt Yield PV-Anlage -> (1) export grid + (3) export house + (4) charge accu
+    # - PV-Yield (3) -> zählt auch Akku Endladungen mit
+
+    def __init__(self, polling_interval_seconds=60, is_debugging=False):
         self.polling_interval_seconds = polling_interval_seconds
+        self.is_debugging = is_debugging
+        self.is_shutdown = False
 
         # start measuring of pv values in background thread
-        self.pv_facility = PV_Facility()
-        self.measure_thread = threading.Thread(target=self.pv_facility.run, args=())
+        self.pv_facility = PV_Facility(is_debugging=is_debugging)
+        self.measure_thread = threading.Thread(target=self.pv_facility.pv_run, args=())
         self.measure_thread.start()
 
         self.current_day = datetime.datetime.now().date()
@@ -49,17 +56,17 @@ class AppMetrics:
         self.grid_delta_energy = Gauge("grid_delta_energy", "Grid Delta Energy")
         self.grid_delta_power = Gauge("grid_delta_power", "Grid Delta Power")
 
-        # (3) pv ==> Haus
+        # (3) pv &| accu ==> house &| grid
         self.yield_energy = Gauge("yield_energy", "Yield Energy")
         self.yield_delta_energy = Gauge("yield_delta_energy", "Yield Delta Energy")
         self.yield_delta_power = Gauge("yield_delta_power", "Yield Delta Power")
 
-        # (4) storage <==
+        # (4) storage <== pv
         self.storage_charge_energy = Gauge("storage_charge_energy", "Storage Charge Energy")
         self.storage_charge_delta_energy = Gauge("storage_charge_delta_energy", "Storage Charge Delta Energy")
         self.storage_charge_delta_power = Gauge("storage_charge_delta_power", "Storage Charge Delta Power")
 
-        # (5) storage ==>
+        # (5) storage ==> house
         self.storage_discharge_energy = Gauge("storage_discharge_energy", "Storage Discharge Energy")
         self.storage_discharge_delta_energy = Gauge("storage_discharge_delta_energy", "Storage Discharge Delta Energy")
         self.storage_discharge_delta_power = Gauge("storage_discharge_delta_power", "Storage Discharge Delta Power")
@@ -86,7 +93,9 @@ class AppMetrics:
     def run_metrics_loop(self):
         """Metrics fetching loop"""
 
-        while True:
+        print("entered run_metrics_loop()")
+
+        while not self.is_shutdown:
             self.fetch()
 
             # show values for the last day on console:
@@ -96,7 +105,12 @@ class AppMetrics:
                 print(temp)
                 self.current_day = current_day
                 
-            time.sleep(self.polling_interval_seconds)
+            delay_tick = 0.0
+            while not self.is_shutdown and delay_tick < self.polling_interval_seconds:
+                time.sleep(1.0)
+                delay_tick += 1.0
+
+        print("run_metrics_loop() finished.")
 
     def fetch(self):
         """
@@ -150,21 +164,21 @@ class AppMetrics:
         storage_balance_delta_power_kwh = storage_charge_delta_kWh - storage_discharge_delta_kWh
         self.storage_balance_delta_power.set(storage_balance_delta_power_kwh)
 
-        # (7) PV to house
-        # PV Yield (3) - PV Export (1) - Accu Balance (6))
+        # (7) PV to house == (3) - (1)
+        # PV Yield (3) - PV Export (1) // no: - Accu Balance (6))
         pv_consumed_house_energy_kw = yield_kW - grid_exported_kW - storage_balance_delta_kw
         self.pv_consumed_house_energy.set(pv_consumed_house_energy_kw)
         pv_consumed_house_delta_energy_kw = yield_delta_kW - grid_exported_delta_kW - storage_balance_delta_kw
         self.pv_consumed_house_delta_energy.set(pv_consumed_house_delta_energy_kw)
-        pv_consumed_house_delta_power_kwh = yield_delta_kWh - grid_exported_delta_kWh - storage_balance_delta_power_kwh
+        pv_consumed_house_delta_power_kwh = yield_delta_kWh - grid_exported_delta_kWh # - storage_balance_delta_power_kwh     # TODO -> check -> accu discharge is contained in yield !
         self.pv_consumed_house_delta_power.set(pv_consumed_house_delta_power_kwh)
 
-        # (8) House total consumption = Grid consumed from house + PV Consumed from house
-        used_energy = accumulated_grid_kW + yield_kW
+        # (8) House total consumption = Grid consumed from house (2) + PV Consumed from house (3) - PV Export (1)
+        used_energy = accumulated_grid_kW + yield_kW - grid_exported_kW
         self.used_house_energy.set(used_energy)
-        used_delta_energy = delta_grid_kW + yield_delta_kW
+        used_delta_energy = delta_grid_kW + yield_delta_kW - grid_exported_delta_kW
         self.used_house_delta_energy.set(used_delta_energy)
-        used_power = delta_grid_kWh + yield_delta_kWh
+        used_power = delta_grid_kWh + yield_delta_kWh - grid_exported_delta_kWh
         self.used_house_power.set(used_power)
 
         # other data
@@ -181,10 +195,24 @@ def main():
     polling_interval_seconds = int(os.getenv("POLLING_INTERVAL_SECONDS", "30"))
     exporter_port = int(os.getenv("EXPORTER_PORT", "9120"))
     print("Prometheus exporter for Huawei PV-Facility on port="+str(exporter_port))
+    print("starting...")
 
     app_metrics = AppMetrics(
-        polling_interval_seconds=polling_interval_seconds
+        polling_interval_seconds=polling_interval_seconds,
+        is_debugging=False
     )
+
+    def signal_handler(sig, frame):
+        try:
+            print('Ctrl+C pressed !') #,sig, frame)
+            app_metrics.pv_facility.shutdown()
+            time.sleep(2.0) # give time to stop the other threads
+        except Exception as exc:
+            print("EXCEPTION in signal handler:", exc)
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     start_http_server(exporter_port)
     app_metrics.run_metrics_loop()
 
