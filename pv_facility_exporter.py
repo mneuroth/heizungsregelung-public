@@ -23,11 +23,11 @@ class AppMetrics:
     # - tägliches Akku laden                         ok -> Delta (4)
     # - tägliches Akku entladen                      ok -> Delta (5)
     # - tägliche Bilanz Akku (netto aufgeladen oder entladen)  Delta Akku geladen (4) - Delta Akku entladen (5) = Akku Bilanz (6)
-    # - täglicher Verbrauch von PV-Anlage            ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)  -> besser: (3) - (1)
+    # - täglicher Verbrauch des Hauses von PV-Anlage ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)  -> besser: (3) - (1)
     # - täglicher Verbrauch des Hauses               ?  => Bezug vom Netz (2) + Verbrauch von PV-Anlage (7) = Verbrauch Haus (8)           -> besser: (2) + (3) - (1) = (2) + (7)
 
-    # - täglicher gesamt Yield PV-Anlage -> (1) export grid + (3) export house + (4) charge accu
-    # - PV-Yield (3) -> zählt auch Akku Endladungen mit
+    # - täglicher gesamt Yield PV-Anlage -> (3) export house &| Netz + (4) charge accu ???
+    # - PV-Yield (3) -> zählt auch Akku Endladungen mit und Export in das Grid !
 
     def __init__(self, polling_interval_seconds=60, is_debugging=False):
         self.polling_interval_seconds = polling_interval_seconds

@@ -145,7 +145,9 @@ class PV_Facility:
         grid_export_kwh = self.grid_exported_energy_1.get_last_day_delta_value()
         grid_import_kwh = self.grid_accumulated_energy_2.get_last_day_delta_value()
         pv_yield_kwh = self.accumulated_yield_energy_3.get_last_day_delta_value()
-        accu_balance_kwh = self.storage_total_charge_energy_4.get_last_day_delta_value() - self.storage_total_discharge_energy_5.get_last_day_delta_value()
+        accu_charge_kwh = self.storage_total_charge_energy_4.get_last_day_delta_value()
+        accu_discharge_kwh = self.storage_total_discharge_energy_5.get_last_day_delta_value()
+        accu_balance_kwh = accu_charge_kwh - accu_discharge_kwh if accu_charge_kwh is not None and accu_discharge_kwh is not None else 0.0
         s += f'PV Export to Grid:  {grid_export_kwh:8.2f} kWh\n'       # (1)
         s += f'Consumed from Grid: {grid_import_kwh:8.2f} kWh\n'       # (2)
         s += f'PV Yield:           {pv_yield_kwh:8.2f} kWh\n'          # (3)
