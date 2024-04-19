@@ -1,0 +1,12 @@
+pyserial==3.5
+#mariadb==1.0.11
+prometheus_client==0.20.0
+huawei_solar==2.2.9
+pytz
+pyserial-asyncio
+pymodbus
+backoff
+pandas
+sqlalchemy
+pymysql
+pytest
