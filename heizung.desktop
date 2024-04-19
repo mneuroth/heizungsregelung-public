@@ -1,9 +1,10 @@
 #content of /home/pi/.config/autostart/heizung.destop
 
 [Desktop Entry]
+Encoding=UTF-8
 Type=Application
 Name=Heizung
 Terminal=true
 #Exec=/home/pi/Dokumente/projects/heizungsregelung/start_pi.sh
-Exec=lxterminal -t "Heizungsregelung" --working-directory=/home/pi/Dokumente/projects/heizungsregelung/ -e ./start_pi.sh
+Exec=lxterminal -t "Heizungsregelung" --working-directory=/home/pi/Documents/projects/heizungsregelung/ -e ./start_pi.sh
 StartupNotify=false

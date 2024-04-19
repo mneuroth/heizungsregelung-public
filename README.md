@@ -156,14 +156,34 @@ Es gibt zwei Software Komponenten, die für den Betrieb des Systems notwendig si
 
 * [Firmware für die Heizungsplatine](heatcontrol_firmware), erstellt mit der [Arduino IDE](https://www.arduino.cc/en/software)
 * [Regelungs Programm](heizung.py) für den Raspberry Pi, erstellt in Python
+  * Das Regelungs Programm besteht aus folgenden Python Dateien:
+    * [heizung.py](heizung.py)
+    * [libclient.py](libclient.py)
+    * [libserver.py](libserver.py)
+    * [pipeprocessing.py](pipeprocessing.py)
+    * [simplesrv.py](simplesrv.py)
+    * [file_utils.py](file_utils.py)
+  * optional:
+    * [heizung_exporter.py](heizung_exporter.py)
+    * [pv_facility_exporter.py](pv_facility_exporter.py)
+    * [pv_facility_reader.py](pv_facility_reader.py)
+    * [timeline_data_tracker.py](timeline_data_tracker.py)
+  * Das Regelungs Programm benötigt folgende Python Module (siehe auch [requirements.txt](requirements.txt)):
+    * `pyserial` (Version 3.5 ist getestet)
+  * optional:
+    * `mariadb` (Version 1.0.11 ist getestet)
+    * `prometheus_client` (Version 0.20.0 ist getestet)
+    * `huawei_solar` (Version 2.2.9 ist getestet, benötigt mindestens Python 3.10)
 
 Zusätzlich gib es noch einige Tools und Skripte um das System zu atomatisieren und analysieren:
 
 * [Auswerteprogramm view_temp.py](view_temp.py) der Temperatur Sensor Daten
 * [Auto Start Skript](start_pi.sh) für den Rasperry Pi
+* [Skript für Grafana Exporter](start_pv_exporter.sh) für den Rasperry Pi
 * [Desktop Icon](start_heizung.destop) für Rasperry Pi
 * Backup Skript um die Temperatur Sensor Daten auf einem NAS zu sichern
 * [Prometheus Exporter für Heizungsregelung](heizung_exporter.py)
+* [Prometheus Exporter für PV Anlage](pv_facility_exporter.py)
 
 Obsolete Software:
 
@@ -276,6 +296,8 @@ Datum        | Aktion
 23.5.2023    | Verwende stabilere PL011 anstatt miniuart für RS232 Kommunikation
 10.1.2024    | Implemetierung der Betriebsstunden Zähler
 11.2.2024    | Unterstützung für PV-Anlage hinzugefügt, Grafana Exporter realisiert und Grafana Dashboard erweitert
+24.3.2024    | Erste Tests mit Raspberry Pi OS Update von Bullseye zu Debian 12 Bookworm wegen aktuellerer Python Version 3.11.2, benötigt für gleichzeitigen MariaDB Zugriff und huawei_solar Modul Unterstützung (PV-Anlage)
+19.4.2024    | Erste Unit-Tests hinzugefügt, Unterstützung der Dokumentation der Abhängigkeiten via GraphViz hinzugefügt
 
 Funktionen der Heizungsregelung
 -------------------------------
@@ -316,12 +338,15 @@ Installation (Software)
 Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 
 - Raspberry Pi Einrichtung
-    - Raspberry OS Linux Betriebssystem auf SD Karte einrichten
+    - Raspberry OS Linux Betriebssystem auf SD Karte einrichten (Bullseye oder Bookworm sind getestet)
     - Verwende UART für RS232 auf Raspberry Pi 3 (default: Bluetooth uses UART and RS232 uses MINI-UART which is not so stable), see: [RS232 on Raspberry Pi 3](https://pi-buch.info/die-serielle-schnittstelle-auf-dem-raspberry-pi-3/)
         - siehe umfrangreiche Dokumentation für [UART Kommunikation auf Raspberry Pi](https://www.electronicwings.com/raspberry-pi/raspberry-pi-uart-communication-using-python-and-c)
-        - Verwende `PL011` für UART Kommunikation und `miniuart` für die Bluetooth Kommunikation (miniuart ändert Baudrate mit CPU/GPU Frequenz und ist daher nicht so stabil wie PL011!) und ggf. `WLAN` ausschalten: --> edit `/boot/config.txt`
-            - `dtoverlay=pi3-miniuart-bt` oder neu: `dtoverlay=miniuart-bt`
+        - Verwende `PL011` für UART Kommunikation und `miniuart` für die Bluetooth Kommunikation (miniuart ändert Baudrate mit CPU/GPU Frequenz und ist daher nicht so stabil wie PL011!) und ggf. `WLAN` ausschalten: --> edit `/boot/config.txt` --> neu: `/boot/firmware/config.txt`
+            - `dtoverlay=pi3-miniuart-bt` oder neu: `dtoverlay=miniuart-bt` oder `dtoverlay=disable-bt`
             - `dtoverlay=pi3-disable-wifi`
+            - nach Reboot sollte folgende Anzeige beim Kommando `ls -l /dev` stehen:
+                - `lrwxrwxrwx  1 root root           7 23. Mär 20:17 serial0 -> ttyAMA0`  <-- UART (stabil)
+                - `lrwxrwxrwx  1 root root           5 23. Mär 20:17 serial1 -> ttyS0`    <-- miniuart
     - Benenne den USB-Memory-Stick in `USB_DATA` -> es sollte folgender Pfad verfügbar sein `/media/pi/USB_DATA/heating_control`
     - Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
         - `> curl -fsSL https://get.Docker.com -o get-Docker.sh`
@@ -331,10 +356,12 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
         - `> docker run hello-world`
         - `> docker volume create portainer_data`
         - `> docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest`
-        - Prometheus Node Exporter einrichten (aus Raspbian Repository): `sudo apt-get install prometheus-node-exporter`		
-        - Prometheus Docker Container starten: `docker run -d -p 9090:9090 --restart=always --name prom -v /home/pi/Dokumente/projects/heizungsregelung/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
+        - Prometheus Node Exporter einrichten (aus Raspbian Repository): `sudo apt-get install prometheus-node-exporter`
+          - Test: [Metrics](http://heizungsregelung:9100/metrics)
+        - Prometheus Docker Container starten: `docker run -d -p 9090:9090 --restart=always --name prom -v /home/pi/Documents/projects/heizungsregelung/prometheus.yml:/prometheus/prometheus.yml prom/prometheus`
             - ggf. mit Option für das Kommando `prom/prometheus`: `--storage.tsdb.retention.time=30d`
             - Update: `prometheus.yml` liegt aus Zugriffs-Gründen unter folgendem Pfad: `/home/pi/docker/prometheus.yml`
+            - Test: [Prometheus](http://heizungsregelung:9090/)
         - Grafana Docker Container starten:`docker run -d --restart=always --name=grafana -p 3000:3000 grafana/grafana`
             - [Grafana Dashboard für Pi und Docker Monitoring](https://grafana.com/grafana/dashboards/15120-raspberry-pi-docker-monitoring/)
             - [Grafana Dashboard für Prometheus Node Exporter Monitoring](https://grafana.com/grafana/dashboards/9894-node-exporter-0-16-for-prometheus-monitoring-display-board/)
@@ -346,7 +373,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
         - [Prometheus Linux Node Exporter](http://heizungsregelung:9100/) (Exporter-Test im Browser)
         - [Prometheus Heizungsregelung Exporter](http://heizungsregelung:9110/) (Exporter-Test im Browser)
         - [Prometheus PV-Anlage Exporter](http://heizungsregelung:9120/) (Exporter-Test im Browser)
-    - Konfiguration des Raspberry Pi anpassen
+    - Konfiguration des Raspberry Pi anpassen (via `sudo raspi-config`)
        - Name: `heizungsregelung` -> Zugriff über http://heizungsregelung möglich
        - Schnittstellen aktivieren (Raspberry Pi Konfigurations-Menu):
 		   - ssh
@@ -355,13 +382,30 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 	   - Schnittstellen deaktivieren:
 		   - SPI
 		   - I2C
-		   - Serial Console
+		   - Serial Consoleg
 		   - ...		   
-	- `> cd /home/<user_name>/Dokumente/projects`
+	- Update des RealVNC Servers auf eine mit Bookwork funktionierende Version: 7.10.0
+      - `sudo dpkg -i VNC-Server-7.10.0-Linux-ARM.deb`
+    - Python Umgebung aufsetzen und benötigte Module installieren (für Bookworm):
+        - `apt-get install python3-pandas`
+        - `apt-get install python3-sqlalchemy`
+        - `apt-get install python3-pymysql`
+        - `apt-get install python3-pymodbus`
+        - `apt-get install python3-serial-asyncio`
+        - `apt-get install python3-backoff`
+        - `apt-get install python3-prometheus-client`
+        - Erzeuge venv für huawei_solar
+            - `python3 -m venv --system-site-packages /home/pi/Documents/projects/heizung_pyenv`
+            - `> cd /home/pi/Documents/projects/heizung_pyenv/bin`
+            - `> source activate`
+            - `/home/pi/Documents/projects/heizung_pyenv/bin/python`
+            - `/home/pi/Documents/projects/heizung_pyenv/bin/pip`
+            - `/home/pi/Documents/projects/heizung_pyenv/pip install huawei_solar`
+    - `> cd /home/<user_name>/Documents/projects`
 	- `> git clone https://github.com/mneuroth/heizungsregelung-public.git`
 	- Testen des Heizungsreglungs Programms: 
         - `> python heizung.py -t -i`
-        - Verwende Browser mit [dieser URL](localhost:8008) um Web-Oberfläche anzuzeigen: 
+        - Verwende Browser mit [dieser URL (localhost:8008)](http://localhost:8008) um Web-Oberfläche anzuzeigen: 
            - __ACHTUNG:__ Port 8000 ist durch Docker/Portainer belegt !
 	- Shell Skript `start_pi.sh` als Skrip im Autostart einrichten, siehe `start_heizung.desktop`. Siehe auch [Dokumentation](https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup/method-2-autostart).
 	    - Erzeuge folgende Datei `/home/<user_name>/.config/autostart/heizung.destop` mit folgendem Inhalt:
@@ -370,7 +414,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
               Type=Application
               Name=Heizung
               Terminal=true
-              Exec=lxterminal -t "Heizungsregelung" --working-directory=/home/<user_name>/Dokumente/projects/heizungsregelung/ -e ./start_pi.sh
+              Exec=lxterminal -t "Heizungsregelung" --working-directory=/home/<user_name>/Documents/projects/heizungsregelung/ -e ./start_pi.sh
               StartupNotify=false
               ```
 	    - In diesem Autostart Skript werden folgende Prozesse gestartet:

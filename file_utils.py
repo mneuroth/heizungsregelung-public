@@ -32,7 +32,8 @@ def append_to_file(sFileName,aData,sPrefix="",sHeaderForNewFile=None):
         #print "file",sFileName,"not found --> created!"
         verify_path(sFileName)
         aFile = open(sFileName,"w")
-    aFile.write(sPrefix+list_to_csv_line(aData)+"\n") 
+    txt = list_to_csv_line(aData) if isinstance(aData, (list, tuple)) else str(aData)
+    aFile.write(sPrefix+txt+"\n")
     aFile.close()
 
 def verify_path(sFileNameWithPath):

@@ -2,7 +2,7 @@
     PV facility exporter for Grafana.
 """
 import time
-import datetime
+#import datetime
 import os
 import sys
 import threading
@@ -22,9 +22,9 @@ class AppMetrics:
     # - tägliche PV-Anlage &| Akku ins Haus &| Netz  ok -> Delta (3)
     # - tägliches Akku laden                         ok -> Delta (4)
     # - tägliches Akku entladen                      ok -> Delta (5)
-    # - tägliche Bilanz Akku (netto aufgeladen oder entladen)  Delta Akku geladen (4) - Delta Akku entladen (5) = Akku Bilanz (6)
-    # - täglicher Verbrauch des Hauses von PV-Anlage ?  => Erzeugung (3) - Enspeisung (1) - Akku Bilanz (6) = Verbrauch von PV-Anlage (7)  -> besser: (3) - (1)
-    # - täglicher Verbrauch des Hauses               ?  => Bezug vom Netz (2) + Verbrauch von PV-Anlage (7) = Verbrauch Haus (8)           -> besser: (2) + (3) - (1) = (2) + (7)
+    # - tägliche Bilanz Akku (netto aufgeladen oder entladen)         => (6) = (4) - (5)
+    # - täglicher Verbrauch des Hauses von PV-Anlage                  => (7) = (3) - (1)
+    # - täglicher Verbrauch des Hauses                                => (8) = (3) - (1) + (2)
 
     # - täglicher gesamt Yield PV-Anlage -> (3) export house &| Netz + (4) charge accu ???
     # - PV-Yield (3) -> zählt auch Akku Endladungen mit und Export in das Grid !
@@ -35,11 +35,11 @@ class AppMetrics:
         self.is_shutdown = False
 
         # start measuring of pv values in background thread
-        self.pv_facility = PV_Facility(is_debugging=is_debugging)
+        self.pv_facility = PV_Facility(is_debugging=is_debugging, fcnTriggerShutdown=self.trigger_shutdown)
         self.measure_thread = threading.Thread(target=self.pv_facility.pv_run, args=())
         self.measure_thread.start()
 
-        self.current_day = datetime.datetime.now().date()
+        #self.current_day = datetime.datetime.now().date()
 
         # wait for first read of values...
         time.sleep(30)
@@ -90,20 +90,27 @@ class AppMetrics:
         self.active_power = Gauge("active_power", "Active Power")
         self.reactive_power = Gauge("reactive_power", "Reactive Power")
 
+    def trigger_shutdown(self):
+        """Trigger a shutdown of this process"""
+        self.is_shutdown = True
+
     def run_metrics_loop(self):
         """Metrics fetching loop"""
 
         print("entered run_metrics_loop()")
 
+# # TODO -> dump the infos of the last days at startup !
+#         print(self.pv_facility.dump_all_day_values())
+
         while not self.is_shutdown:
             self.fetch()
 
-            # show values for the last day on console:
-            current_day = datetime.datetime.now().date()
-            if current_day > self.current_day:
-                temp = self.pv_facility.dump_last_day_values()
-                print(temp)
-                self.current_day = current_day
+            # # show values for the last day on console:
+            # current_day = datetime.datetime.now().date()
+            # if current_day > self.current_day:
+            #     temp = self.pv_facility.dump_last_day_values()
+            #     print(temp)
+            #     self.current_day = current_day
                 
             delay_tick = 0.0
             while not self.is_shutdown and delay_tick < self.polling_interval_seconds:
@@ -165,12 +172,11 @@ class AppMetrics:
         self.storage_balance_delta_power.set(storage_balance_delta_power_kwh)
 
         # (7) PV to house == (3) - (1)
-        # PV Yield (3) - PV Export (1) // no: - Accu Balance (6))
-        pv_consumed_house_energy_kw = yield_kW - grid_exported_kW - storage_balance_delta_kw
+        pv_consumed_house_energy_kw = yield_kW - grid_exported_kW 
         self.pv_consumed_house_energy.set(pv_consumed_house_energy_kw)
-        pv_consumed_house_delta_energy_kw = yield_delta_kW - grid_exported_delta_kW - storage_balance_delta_kw
+        pv_consumed_house_delta_energy_kw = yield_delta_kW - grid_exported_delta_kW
         self.pv_consumed_house_delta_energy.set(pv_consumed_house_delta_energy_kw)
-        pv_consumed_house_delta_power_kwh = yield_delta_kWh - grid_exported_delta_kWh # - storage_balance_delta_power_kwh     # TODO -> check -> accu discharge is contained in yield !
+        pv_consumed_house_delta_power_kwh = yield_delta_kWh - grid_exported_delta_kWh
         self.pv_consumed_house_delta_power.set(pv_consumed_house_delta_power_kwh)
 
         # (8) House total consumption = Grid consumed from house (2) + PV Consumed from house (3) - PV Export (1)
@@ -212,6 +218,7 @@ def main():
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
+# TODO -> signal handler for exception/error -> signal.SIGTERM, signal.SIGSEGV, signal.SIGABRT, signal.SIGBREAK, signal.SIGCHLD, signal.SIGKILL
 
     start_http_server(exporter_port)
     app_metrics.run_metrics_loop()

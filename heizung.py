@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-""" 
+r""" 
    ****************************
    * Heating control program. *
    ****************************
@@ -224,8 +224,8 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.8.1"
-__date__    = "20.2.2024"
+__version__ = "2.8.2"
+__date__    = "19.4.2024"
 # *************************************************************************
 START_YEAR = 2010
 
@@ -236,6 +236,7 @@ g_bTest = False
 g_bExclusiveRs232 = False
 g_bUseCache = True
 g_bUseWatchdog = False
+g_bDumpDependencyGraph = False
 g_actUsbRs232Devices = []
 
 def is_debug():
@@ -269,6 +270,10 @@ def set_use_watchdog(bValue):
     global g_bUseWatchdog
     g_bUseWatchdog = bValue
     
+def set_dump_dependency_graph(bValue):
+    global g_bDumpDependencyGraph
+    g_bDumpDependencyGraph = bValue
+
 def find_win32_rs232_devices():
     ret = []
     for i in range(255):
@@ -826,6 +831,25 @@ class ControlEngine(list):
         for e in self:
             e.finish()
 
+    def get_graph(self):
+        sGraph = ""
+        for signal_processor in self:
+            if len(sGraph)>0:
+                sGraph += "\n"
+            sGraph += signal_processor.get_graph()
+        return sGraph
+    
+    def get_dot_data(self):
+        """
+            Return data which can be used with graphviz (.dot)
+        """
+        sGraph = ""
+        for signal_processor in self:
+            #if len(sGraph)>0:
+            #    sGraph += "\n"
+            sGraph += signal_processor.get_dot_data()
+        return sGraph
+
     def run_persistence(self):
         # delegate finish-call to all children
         for e in self:
@@ -1030,6 +1054,40 @@ class SignalProcessor(object):
         #print "FINISH",self
         pass
 
+    def _get_input_signal(self, input_signal):
+        if self.aInputSignals[input_signal] is not None:
+            if isinstance(self.aInputSignals[input_signal], str):
+                # functools.partial(<bound method TemperatureMeasurement.get_channel of <__main__.TemperatureMeasurement object at 0x000001E41EBDEE40>>, 0)
+                return self.aInputSignals[input_signal]
+            elif isinstance(self.aInputSignals[input_signal], functools.partial):
+                func = self.aInputSignals[input_signal]
+                return f"{func.get_node_name()}"
+                #return f"{dir(func.func.__func__)} {func.func.__func__} {func.func.__class__}.{func.func.__name__} {func.func.__name__}({func.args})"
+            else:
+                return str(self.aInputSignals[input_signal].get_name()+':'+self.__class__.__name__)
+        return 'NO_INPUT_for_'+input_signal
+
+    def get_graph(self):
+        sInput = ""
+        for input_signal in self.aInputSignals:
+            if len(sInput)>0:
+                sInput += ", "
+            sInput += self._get_input_signal(input_signal)
+        return f"{self.sName}:{self.__class__.__name__} <- [{sInput}]"
+
+    def get_dot_data(self):
+        """
+            Return data which can be used with graphviz (.dot)
+        """
+        sInput = ""
+        for input_signal in self.aInputSignals:
+            sInput += self._get_input_signal(input_signal) #+ '::' + str(self)
+            sInput += " -> "
+            sInput += self.sName
+            sInput += ' [label="input"]'
+            sInput += "\n"
+        return sInput
+
     def run_persistence(self):
         self.aHistoryCache.run_persistence()
 
@@ -1104,7 +1162,7 @@ class SignalProcessor(object):
             Will be called for each clock tick in processing mode.
             Must return a value representing the actual signal level.
         """
-        return None
+        return self.get_value()
 
     def _do_clock_tick(self):
         val = self.clock_tick()
@@ -1113,7 +1171,7 @@ class SignalProcessor(object):
         return val
 
     def _get_timeline(self,iTickBacks=0):
-        if iTickBacks>len(self.aTimeline)-1:	# or iTickBacks<0
+        if abs(iTickBacks)>len(self.aTimeline)-1:	# or iTickBacks<0
             return None
         return self.aTimeline[-1-abs(iTickBacks)]   # return the last element of the timeline
                 
@@ -1158,7 +1216,9 @@ class TemperatureMeasurement(SignalProcessor):
         return None
 
     def get_channel_fcn(self,iChannel):
-        return functools.partial(self.get_channel,iChannel)
+        ret = functools.partial(self.get_channel,iChannel)
+        ret.get_node_name = lambda: f'{self.__class__.__name__}_get_channel_fcn_{iChannel}_'        
+        return ret
 
     def get_channel(self,iChannel):
         return self.aActValuesT[iChannel]
@@ -1279,7 +1339,7 @@ class RelaisMeasurement(SignalProcessor):
         if self.aRelaisRS232:
             return self.aRelaisRS232.switch_port_fcn(iChannel)
         else:
-            # simulate relaise object if no hardware is available
+            # simulate relais object if no hardware is available
             return functools.partial(self.dummy_switch_port,iChannel)
 
     # delegate to aRelaisRS232 object 
@@ -1287,21 +1347,21 @@ class RelaisMeasurement(SignalProcessor):
         if self.aRelaisRS232:
             return self.aRelaisRS232.three_switch_port_fcn(iChannelOpen,iChannelClose)
         else:
-            # simulate relaise object if no hardware is available
+            # simulate relais object if no hardware is available
             return functools.partial(self.dummy_three_switch,iChannelOpen,iChannelClose)
 
     def switch_port_for_not_value_fcn(self,iChannel):
         if self.aRelaisRS232:
             return self.aRelaisRS232.switch_port_for_not_value_fcn(iChannel)
         else:
-            # simulate relaise object if no hardware is available
+            # simulate relais object if no hardware is available
             return functools.partial(self.dummy_switch_port_for_not_value,iChannel)
         
     def switch_virtual_port_fcn(self,iVirtualChannel):
         if self.aRelaisRS232:
             return self.aRelaisRS232.switch_virtual_port_fcn(iVirtualChannel)
         else:
-            # simulate relaise object if no hardware is available
+            # simulate relais object if no hardware is available
             return functools.partial(self.dummy_virtual_switch_port,iVirtualChannel)
 
     def dummy_three_switch(self,iChannelOpen,iChannelClose,iValue):
@@ -1438,6 +1498,11 @@ class AndNode(SignalProcessor):     # new since 4.1.2019
         super(AndNode,self).__init__(sName)
         self.lstNodes = lstNodes
         self.defaultValueForNone = defaultValueForNone
+        # add all nodes to the input signals dictionary
+        count = 0
+        for node in self.lstNodes:
+            count += 1
+            self.aInputSignals['node_'+str(count)] = node
 
     def clock_tick(self):
         """
@@ -1466,6 +1531,11 @@ class OrNode(SignalProcessor):     # new since 4.1.2019
         super(OrNode,self).__init__(sName)
         self.lstNodes = lstNodes
         self.defaultValueForNone = defaultValueForNone
+        # add all nodes to the input signals dictionary
+        count = 0
+        for node in self.lstNodes:
+            count += 1
+            self.aInputSignals['node_'+str(count)] = node
 
     def clock_tick(self):
         """
@@ -1493,6 +1563,7 @@ class NotNode(SignalProcessor):     # new since 4.1.2019
     def __init__(self,sName,aNode):
         super(NotNode,self).__init__(sName)
         self.aNode = aNode
+        self.aInputSignals['not_node'] = self.aNode
 
     def clock_tick(self):        
         value = self.aNode.get_value() #clock_tick()            # or e.get_value() but this is maybe the last value because framework has not evaluated all nodes yet in this clock tick
@@ -1515,6 +1586,7 @@ class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024
         self.iMaxTickCountForSave = int(60.0 / ControlEngine.DELAY) # write file once a minute
         self.dLastTickPerfCounter = None
         self._load_data()
+        self.aInputSignals['node'] = self.aNode
 
     def run_persistence(self):
         self._save_data()
@@ -1581,6 +1653,7 @@ class TemperatureSource(DataSource):
         self.bCheckForShift = bCheckForShift
         self.dLastGoodValue = None
         self.dShift = 0.0
+        self.aInputSignals['data_source'] = fcnDataSource
         
 #    def clock_tick_for_jump(self):
 #        value = super(TemperatureSource,self).clock_tick()              # 18.0
@@ -2138,6 +2211,9 @@ class ValueSwitch(SignalProcessor):
         self.aInputForOn = aInputForOn          # ManualSwitch ON
         self.aInputForOff = aInputForOff        # ManualSwitch OFF or None
         self.aManualSwitch = aManualSwitch
+        self.aInputSignals['input_for_on'] = self.aInputForOn
+        self.aInputSignals['input_for_off'] = self.aInputForOff
+        self.aInputSignals['input_for_manual_switch'] = self.aManualSwitch
 
     def clock_tick(self):    
         val = self.aManualSwitch.clock_tick()
@@ -2162,8 +2238,30 @@ class SwitchRelais(SignalProcessor):
     
     def __init__(self,sName,fcnSignalSideEffect=None,fcnSignalSideEffectForNotEnabled=None):
         super(SwitchRelais,self).__init__(sName)
+        # side effects are something like outputs
         self.fcnSignalSideEffect = fcnSignalSideEffect
         self.fcnSignalSideEffectForNotEnabled = fcnSignalSideEffectForNotEnabled
+
+    def get_graph(self):
+        sInput = ""
+        for input_signal in self.aInputSignals:
+            if len(sInput)>0:
+                sInput += ", "
+            sInput += self._get_input_signal(input_signal)
+        return f"{self.sName}:{self.__class__.__name__} <- [{sInput}]"
+
+    def get_dot_data(self):
+        """
+            Return data which can be used with graphviz (.dot)
+        """
+        sInput = ""
+        for input_signal in self.aInputSignals:
+            sInput += self._get_input_signal(input_signal)
+            sInput += " -> "
+            sInput += self.sName
+            sInput += ' [label="input"]'
+            sInput += "\n"
+        return sInput
 
     def clock_init(self):
         self.aInputNode = self.get_input(self.INPUT_ID)
@@ -2539,7 +2637,7 @@ def configure_control():
     append_to_logfile("--> TemperatureMeasurement: "+str(aArduino),is_debug())
     append_to_logfile("--> RelaisMeasurement: "+str(aRelaisManager),is_debug())
     aTempMeasurement = TemperatureMeasurement("TEMP_MEAS",aArduino,bNewHeatingcontrolBoardDetected,bTestQualityOfADCs=False)    # proxy for Ardurino, to synchronize update of temperatures in processing engine/clock
-    aRelaisMeasurement = RelaisMeasurement("RELAIS_MEAS",aRelaisManager)
+    aRelaisMeasurement = RelaisMeasurement("RELAIS_MEAS",aRelaisManager)   # Output
     
     aLightSensor1 = LightSource("LIGHT1",aTempMeasurement.get_channel_fcn(10))
     aLightSensor2 = LightSource("LIGHT2",aTempMeasurement.get_channel_fcn(11))
@@ -2823,6 +2921,12 @@ def run_control(thread_communication_context,aLock):
             #if not os.path.exists("data"): #os.access("data",os.W_OK):
             #    os.mkdir("data")
             aControlEngine = configure_control()
+            if g_bDumpDependencyGraph:
+                # enable this block for creating documentation
+                print("=============================================")
+                print("GRAPH:", aControlEngine.get_graph())
+                print("=============================================")
+                print("DOT:", aControlEngine.get_dot_data())
             global g_aControlEngine
             g_aControlEngine = aControlEngine
             bContinue = not aControlEngine.run(g_sLogFile,thread_communication_context,aLock)
@@ -3005,6 +3109,7 @@ def ShowUsage():
     print( "  -c : run with history cache" )
     print( "  -d : run without history cache" )
     print( "  -w : disable watchdog in python program" )
+    print( "  -g : dump dependency info at startup (for documentation)" )
     print( "  -h : show this help" )
 
 def signal_handler(sig, frame):
@@ -3044,6 +3149,8 @@ if __name__ == '__main__':
         set_use_cache(False)
     if '-w' in sys.argv:   # disable watchdog in python program
         set_use_watchdog(False)
+    if '-g' in sys.argv:
+        set_dump_dependency_graph(True)
     if '-h' in sys.argv:
         ShowUsage()
         bRun = False
