@@ -1162,7 +1162,7 @@ class SignalProcessor(object):
             Will be called for each clock tick in processing mode.
             Must return a value representing the actual signal level.
         """
-        return self.get_value()
+        return None     # means undefined for this generic node
 
     def _do_clock_tick(self):
         val = self.clock_tick()

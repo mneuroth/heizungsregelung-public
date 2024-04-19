@@ -61,7 +61,8 @@ class TestHeizung(unittest.TestCase):
         self.assertEqual(14, obj.get_value(-1))
         self.assertEqual(7, obj.get_value(-2))
         self.assertEqual(None, obj.get_value(-42))
-        self.assertEqual(3, obj.clock_tick())
+        # check clock_tick() for generic object -> should return None
+        self.assertEqual(None, obj.clock_tick())
 
     def test_NotNode_clock_tick(self):
         VAL_ON = 1
