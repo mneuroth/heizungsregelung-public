@@ -106,5 +106,23 @@ class TestHeizung(unittest.TestCase):
         self.assertIsNotNone(obj3)
         self.assertEqual(VAL_ON, obj3.clock_tick())
 
+    def test_CompareToValueNode_clock_tick(self):
+        VAL_ON = 1
+        VAL_OFF = 0
+        valueOnObj = DefalutValueNode("ValueNode", VAL_ON)
+        valueNoneObj = DefalutValueNode("ValueNode", None)
+        obj = heizung.CompareToValueNode(self.DUMMY, valueOnObj, 1)
+        self.assertIsNotNone(obj)
+        self.assertEqual(VAL_ON, obj.clock_tick())
+        obj2 = heizung.CompareToValueNode(self.DUMMY, valueOnObj, 1, lambda a, b: a != b)
+        self.assertIsNotNone(obj2)
+        self.assertEqual(VAL_OFF, obj2.clock_tick())
+        obj3 = heizung.CompareToValueNode(self.DUMMY, valueNoneObj, None)
+        self.assertIsNotNone(obj3)
+        self.assertEqual(VAL_ON, obj3.clock_tick())
+        obj4 = heizung.CompareToValueNode(self.DUMMY, valueOnObj, None)
+        self.assertIsNotNone(obj4)
+        self.assertEqual(VAL_OFF, obj4.clock_tick())
+
 if __name__ == '__main__':
     unittest.main()
