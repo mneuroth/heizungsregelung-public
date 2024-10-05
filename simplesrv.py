@@ -653,7 +653,7 @@ function JSRequest(name,val) {
             else:
                 val = data[e]
                 stddev = 0.0
-            if e in ["MASTER_ID","TICK_COUNTER","ARDURINO_COUNT","WATCHDOG","ACT_TICK","TIMELINE","ENABLE_HEATING_MOTOR","ENABLE_HEATING_MOTOR_NIGHT","ENABLE_HEATING_MOTOR_VALUE","ENABLE_HEATING_MOTOR_DATE_AND_VALUE","ENABLE_HEATING_MOTOR_DATE","ENABLE_DATE_HEATING_MOTOR","ENABLE_MIXER_CLOSE","ENABLE_ANTI_FIXING_SWITCH","ENABLE_MIXER_MOVEMENT","ENABLE_HEATING_MOTOR_ALL_INPUTS","ENABLE_HEAT_PUMP","NOT_MANUAL_SWITCH_HEATING_DATE","TEMP_MEAS","RELAIS_MEAS"]:
+            if e in ["MASTER_ID","TICK_COUNTER","ARDURINO_COUNT","WATCHDOG","ACT_TICK","TIMELINE","ENABLE_HEATING_MOTOR","ENABLE_HEATING_MOTOR_NIGHT","ENABLE_HEATING_MOTOR_VALUE","ENABLE_HEATING_MOTOR_DATE_AND_VALUE","ENABLE_HEATING_MOTOR_DATE","ENABLE_DATE_HEATING_MOTOR","ENABLE_MIXER_CLOSE","ENABLE_ANTI_FIXING_SWITCH","ENABLE_MIXER_MOVEMENT","ENABLE_HEATING_MOTOR_ALL_INPUTS","ENABLE_HEAT_PUMP","NOT_MANUAL_SWITCH_HEATING_DATE","TEMP_MEAS","RELAIS_MEAS","LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_ENABLE_HEATPUMP_VIA_PV","ENABLE_HEAT_PUMP_FOR_PV"]:
                 sp += "<tr>"
                 sp += "<td>"+e+"</td>"
                 sp += "<td>"+str(val)+"</td>"
@@ -726,7 +726,7 @@ function JSRequest(name,val) {
         sp += "</table>"
         si += "</table>"
         smv += "</table>"   
-        s += "<p><b>Current Control Values:</b><p>"
+        s += "<p><b>Current Control Switches:</b><p>"
         s += sm
         s += "<p><b>Current Temperature Values [°C]:</b><p>"
         s += sv

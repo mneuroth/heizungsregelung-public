@@ -173,6 +173,12 @@ else:
 
 # *************************************************************************
 
+LAYER_UNKNOWN = 'LAYER_UNKNOWN'
+LAYER_INPUT = 'LAYER_INPUT'
+LAYER_MANUAL_SWITCH = 'LAYER_MANUAL_SWITCH'
+LAYER_CONTROL = 'LAYER_CONTROL'
+LAYER_OUTPUT = 'LAYER_OUTPUT'
+
 g_bCanControlHeatingControlBoard = False
 try:
     import RPi.GPIO as GPIO
@@ -224,10 +230,12 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.8.2"
-__date__    = "19.4.2024"
+__version__ = "2.8.3"
+__date__    = "5.10.2024"
 # *************************************************************************
 START_YEAR = 2010
+
+g_support_heatpump_via_pv = True
 
 g_bDebug = True
 g_bSimPort = False
@@ -338,7 +346,29 @@ def stddev(lst):
     except:
         return -1.0
     return 0.0
-    
+
+def _node_type_to_shape(node_type):
+    if node_type == LAYER_INPUT:
+        return 'ellipse'
+    elif node_type == LAYER_CONTROL:
+        return 'parallelogram'
+    elif node_type == LAYER_MANUAL_SWITCH:
+        return 'house'
+    elif node_type == LAYER_OUTPUT:
+        return 'hexagon'
+    return 'box'
+   
+def _node_type_to_color(node_type):
+    if node_type == LAYER_INPUT:
+        return 'orange'
+    elif node_type == LAYER_CONTROL:
+        return 'blue'
+    elif node_type == LAYER_MANUAL_SWITCH:
+        return 'red'
+    elif node_type == LAYER_OUTPUT:
+        return 'green'
+    return 'black'
+   
 # *************************************************************************
 class Device(object):
     
@@ -1054,6 +1084,9 @@ class SignalProcessor(object):
         #print "FINISH",self
         pass
 
+    def node_type(self):
+        return LAYER_UNKNOWN
+
     def _get_input_signal(self, input_signal):
         if self.aInputSignals[input_signal] is not None:
             if isinstance(self.aInputSignals[input_signal], str):
@@ -1061,10 +1094,11 @@ class SignalProcessor(object):
                 return self.aInputSignals[input_signal]
             elif isinstance(self.aInputSignals[input_signal], functools.partial):
                 func = self.aInputSignals[input_signal]
+                #print("--->",input_signal, self.aInputSignals, input_signal)
                 return f"{func.get_node_name()}"
                 #return f"{dir(func.func.__func__)} {func.func.__func__} {func.func.__class__}.{func.func.__name__} {func.func.__name__}({func.args})"
             else:
-                return str(self.aInputSignals[input_signal].get_name()+':'+self.__class__.__name__)
+                return str(self.aInputSignals[input_signal].get_name()) #+':'+self.__class__.__name__)
         return 'NO_INPUT_for_'+input_signal
 
     def get_graph(self):
@@ -1080,11 +1114,15 @@ class SignalProcessor(object):
             Return data which can be used with graphviz (.dot)
         """
         sInput = ""
+        sShape = f'shape={_node_type_to_shape(self.node_type())}'
+        sColor = f'color={_node_type_to_color(self.node_type())}'
+        sInput += self.get_name() #+ '::' + str(self)
+        sInput += f'[ {sShape} {sColor} ]\n'
         for input_signal in self.aInputSignals:
-            sInput += self._get_input_signal(input_signal) #+ '::' + str(self)
-            sInput += " -> "
+            sInput += self._get_input_signal(input_signal)
+            sInput += ' -> '
             sInput += self.sName
-            sInput += ' [label="input"]'
+            sInput += f' [label="input"]'
             sInput += "\n"
         return sInput
 
@@ -1196,6 +1234,9 @@ class TemperatureMeasurement(SignalProcessor):
         if self.bTestQualityOfADCs:
             self.MAX_CHANNELS = 16+8
         self.iCount = 0             # tick count for simulation modus without arduino hardware
+
+    def node_type(self):
+        return LAYER_INPUT
 
     def finish(self):
         super(TemperatureMeasurement,self).finish()
@@ -1327,6 +1368,9 @@ class RelaisMeasurement(SignalProcessor):
         super(RelaisMeasurement,self).__init__(sName)
         self.aRelaisRS232 = aRelaisRS232
 
+    def node_type(self):
+        return LAYER_OUTPUT
+
 # TODO --> wird das ueberhaupt noch benoetigt, da wir nun direkt bei der RS232 Kommunikation abfangen sollte dies hier nie mehr aufgerufen werden ?
     def reset_relais(self):
         sRs232Name = self.aRelaisRS232.sRs232Name if self.aRelaisRS232 else "???"
@@ -1336,33 +1380,45 @@ class RelaisMeasurement(SignalProcessor):
         
     # delegate to aRelaisRS232 object 
     def switch_port_fcn(self,iChannel):
+        ret_fcn = None
         if self.aRelaisRS232:
-            return self.aRelaisRS232.switch_port_fcn(iChannel)
+            ret_fcn = self.aRelaisRS232.switch_port_fcn(iChannel)
         else:
             # simulate relais object if no hardware is available
-            return functools.partial(self.dummy_switch_port,iChannel)
+            ret_fcn = functools.partial(self.dummy_switch_port,iChannel)
+        ret_fcn.get_node_name = lambda: f'{self.__class__.__name__}_switch_port_fcn{iChannel}_'        
+        return ret_fcn
 
     # delegate to aRelaisRS232 object 
     def three_switch_port_fcn(self,iChannelOpen,iChannelClose):
+        ret_fcn = None
         if self.aRelaisRS232:
-            return self.aRelaisRS232.three_switch_port_fcn(iChannelOpen,iChannelClose)
+            ret_fcn = self.aRelaisRS232.three_switch_port_fcn(iChannelOpen,iChannelClose)
         else:
             # simulate relais object if no hardware is available
-            return functools.partial(self.dummy_three_switch,iChannelOpen,iChannelClose)
+            ret_fcn = functools.partial(self.dummy_three_switch,iChannelOpen,iChannelClose)
+        ret_fcn.get_node_name = lambda: f'{self.__class__.__name__}_switch_port_fcn{iChannelOpen}_{iChannelClose}_'        
+        return ret_fcn
 
     def switch_port_for_not_value_fcn(self,iChannel):
+        ret_fcn = None
         if self.aRelaisRS232:
-            return self.aRelaisRS232.switch_port_for_not_value_fcn(iChannel)
+            ret_fcn = self.aRelaisRS232.switch_port_for_not_value_fcn(iChannel)
         else:
             # simulate relais object if no hardware is available
-            return functools.partial(self.dummy_switch_port_for_not_value,iChannel)
+            ret_fcn = functools.partial(self.dummy_switch_port_for_not_value,iChannel)
+        ret_fcn.get_node_name = lambda: f'{self.__class__.__name__}_switch_port_fcn{iChannel}_'        
+        return ret_fcn
         
     def switch_virtual_port_fcn(self,iVirtualChannel):
+        ret_fcn = None
         if self.aRelaisRS232:
-            return self.aRelaisRS232.switch_virtual_port_fcn(iVirtualChannel)
+            ret_fcn = self.aRelaisRS232.switch_virtual_port_fcn(iVirtualChannel)
         else:
             # simulate relais object if no hardware is available
-            return functools.partial(self.dummy_virtual_switch_port,iVirtualChannel)
+            ret_fcn = functools.partial(self.dummy_virtual_switch_port,iVirtualChannel)
+        ret_fcn.get_node_name = lambda: f'{self.__class__.__name__}_switch_port_fcn{iVirtualChannel}_'        
+        return ret_fcn
 
     def dummy_three_switch(self,iChannelOpen,iChannelClose,iValue):
         return False
@@ -1565,11 +1621,29 @@ class NotNode(SignalProcessor):     # new since 4.1.2019
         self.aNode = aNode
         self.aInputSignals['not_node'] = self.aNode
 
-    def clock_tick(self):        
+    def clock_tick(self):
         value = self.aNode.get_value() #clock_tick()            # or e.get_value() but this is maybe the last value because framework has not evaluated all nodes yet in this clock tick
         if value==None:
             return None
         return 1 if int(value)==0 else 0
+ 
+# *************************************************************************
+class CompareToValueNode(SignalProcessor):     # new since 5.10.2024
+
+    def __init__(self,sName,aNode,aValue,aCompareOp = lambda a, b: a == b):
+        super(CompareToValueNode,self).__init__(sName)
+        self.aNode = aNode
+        self.aValue = aValue
+        self.aCompareOp = aCompareOp
+        self.aInputSignals['compare_to_value_node'] = self.aNode
+
+    def clock_tick(self):
+        _current_val = self.aNode.get_value()
+        if _current_val is not None:
+            value = type(self.aValue)(_current_val) if self.aValue is not None else _current_val
+        else:
+            value = _current_val
+        return 1 if self.aCompareOp(value,self.aValue) else 0
  
 # *************************************************************************
 class OperatingHoursCounter(SignalProcessor):     # new since 8.1.2024 
@@ -1655,6 +1729,9 @@ class TemperatureSource(DataSource):
         self.dShift = 0.0
         self.aInputSignals['data_source'] = fcnDataSource
         
+    def node_type(self):
+        return LAYER_INPUT
+
 #    def clock_tick_for_jump(self):
 #        value = super(TemperatureSource,self).clock_tick()              # 18.0
 #        if self.dValueForJumpCheck!=None and self.dLastGoodValue!=None: # lastVaue = 8.0
@@ -1703,6 +1780,9 @@ class ThermicalSolarCollectorControl(SignalProcessor):
         self.iLastValue = None
         self.aManualInputNode = None
 
+    def node_type(self):
+        return LAYER_CONTROL
+
     def clock_init(self):
         self.aTempSolarNode = self.get_input(self.INPUT_ID_SOLAR)
         self.aTempBufferNode = self.get_input(self.INPUT_ID_BUFFER)
@@ -1747,6 +1827,9 @@ class HeatingControl(SignalProcessor):
         self.dSwitchOnTemp = dSwitchOnTemp
         self.dLastSwitchChange = None
         self.iLastValue = None
+
+    def node_type(self):
+        return LAYER_CONTROL
 
     def get_additional_data_items(self):
         return {self.get_name()+'_SWITCH_ON_TEMP':self.SWITCH_ON_TEMP}
@@ -1799,6 +1882,9 @@ class DesiredValueForHeatingMixerControl(HeatingControl):
         self.aTickCount = 0
         self.aTickCountLastAction = 0
         self._load_data()
+
+    def node_type(self):
+        return LAYER_CONTROL
 
     def run_persistence(self):
         self._save_data()
@@ -1931,6 +2017,9 @@ class HeatingMixerControl(SignalProcessor):
         self.aTickCount = 0
         self.aTickCountLastAction = 0
 
+    def node_type(self):
+        return LAYER_CONTROL
+
     def _do_action(self):
         """
             Implement the time constant for control operation.
@@ -2011,6 +2100,9 @@ class HeatPumpControl(SignalProcessor):
         self.dLastSwitchChange = None
         self.iLastValue = None
 
+    def node_type(self):
+        return LAYER_CONTROL
+
     def get_additional_data_items(self):
         return { self.get_name()+'_SWITCH_ON_TEMP':self.TEMPERATURE_SWITCH_ON,
                  self.get_name()+'_SWITCH_OFF_TEMP':self.TEMPERATURE_SWITCH_OFF,
@@ -2070,6 +2162,9 @@ class VentilationControl(SignalProcessor):
     def __init__(self,sName):
         super(VentilationControl,self).__init__(sName)
 
+    def node_type(self):
+        return LAYER_CONTROL
+
     def clock_init(self):
         self.aTempOutgoingAirNode = self.get_input(self.INPUT_ID_OUTGOING_AIR)
         self.aHeatPumpOn = self.get_input(self.INPUT_ID_HEATPUMP_ON)
@@ -2093,6 +2188,9 @@ class HeatPumpSolarValveControl(SignalProcessor):
     def __init__(self,sName):
         super(HeatPumpSolarValveControl,self).__init__(sName)
 
+    def node_type(self):
+        return LAYER_CONTROL
+
     def clock_init(self):
         self.aTempCollectorNode = self.get_input(self.INPUT_ID_COLLECTOR)
         self.aSolarForBufferOnNode = self.get_input(self.INPUT_ID_SOLAR_FOR_BUFFER)
@@ -2112,6 +2210,9 @@ class ManualSwitch(SignalProcessor):
         self.aState = aInitState
         self._load_data()
         verify_path(self._get_filename())
+
+    def node_type(self):
+        return LAYER_MANUAL_SWITCH
 
     def set_value(self,aNewState):
         if str(aNewState)=="None":
@@ -2241,6 +2342,10 @@ class SwitchRelais(SignalProcessor):
         # side effects are something like outputs
         self.fcnSignalSideEffect = fcnSignalSideEffect
         self.fcnSignalSideEffectForNotEnabled = fcnSignalSideEffectForNotEnabled
+        self.aInputSignals['data_source'] = fcnSignalSideEffect
+
+    def node_type(self):
+        return LAYER_OUTPUT
 
     def get_graph(self):
         sInput = ""
@@ -2250,18 +2355,18 @@ class SwitchRelais(SignalProcessor):
             sInput += self._get_input_signal(input_signal)
         return f"{self.sName}:{self.__class__.__name__} <- [{sInput}]"
 
-    def get_dot_data(self):
-        """
-            Return data which can be used with graphviz (.dot)
-        """
-        sInput = ""
-        for input_signal in self.aInputSignals:
-            sInput += self._get_input_signal(input_signal)
-            sInput += " -> "
-            sInput += self.sName
-            sInput += ' [label="input"]'
-            sInput += "\n"
-        return sInput
+    # def get_dot_data(self):
+    #     """
+    #         Return data which can be used with graphviz (.dot)
+    #     """
+    #     sInput = ""
+    #     for input_signal in self.aInputSignals:
+    #         sInput += self._get_input_signal(input_signal)
+    #         sInput += " -> "
+    #         sInput += self.sName
+    #         sInput += ' [label="input"]'
+    #         sInput += "\n"
+    #     return sInput
 
     def clock_init(self):
         self.aInputNode = self.get_input(self.INPUT_ID)
@@ -2316,6 +2421,9 @@ class ThreeStateSwitchRelais(SignalProcessor):
         self.bIsClosed = False
         self.iOpenCount = None  # count the ticks for which the mixer is opened
         self._load_data()
+
+    def node_type(self):
+        return LAYER_OUTPUT
 
     def run_persistence(self):
         self._save_data()
@@ -2472,6 +2580,7 @@ ENABLE_MIXER_MAX_TEMP_CONTROL       = "ENABLE_MIXER_MAX_TEMP_CONTROL"
 ENABLE_HEATING_MOTOR_ALL_INPUTS     = "ENABLE_HEATING_MOTOR_ALL_INPUTS"
 ENABLE_MIXER_MOVEMENT               = "ENABLE_MIXER_MOVEMENT"
 ENABLE_HEAT_PUMP                    = "ENABLE_HEAT_PUMP"
+ENABLE_HEAT_PUMP_FOR_PV             = "ENABLE_HEAT_PUMP_FOR_PV"
 ENABLE_MIXER_CLOSE                  = "ENABLE_MIXER_CLOSE"
 ENABLE_DATE_HEATING_MOTOR           = "ENABLE_DATE_HEATING_MOTOR"
 ENABLE_ANTI_FIXING_SWITCH           = "ENABLE_ANTI_FIXING_SWITCH"
@@ -2489,6 +2598,7 @@ MANUAL_SWITCH_VENTILATION           = "MANUAL_SWITCH_VENTILATION"
 MANUAL_SWITCH_HEATPUMP_SOLAR_VALVE  = "MANUAL_SWITCH_HEATPUMP_SOLAR_VALVE"
 MANUAL_SWITCH_BOOSTER               = "MANUAL_SWITCH_BOOSTER"
 MANUAL_SWITCH_MAX_TEMP_CONTROL      = "MANUAL_SWITCH_MAX_TEMP_CONTROL"
+MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV = "MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV"
 
 # switches
 SWITCH_MOTOR_SOLAR                  = "SWITCH_MOTOR_SOLAR"              # Relais 1
@@ -2503,6 +2613,11 @@ SWITCH_BOOSTER                      = "SWITCH_BOOSTER"                  # Relais
 OPERATING_HOURS_HEATPUMP            = "OPERATING_HOURS_HEATPUMP"
 OPERATING_HOURS_MOTOR_HEATING       = "OPERATING_HOURS_MOTOR_HEATING"
 OPERATING_HOURS_MOTOR_SOLAR         = "OPERATING_HOURS_MOTOR_SOLAR"
+
+# logical operations
+LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV        = "LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV"
+LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV    = "LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV"
+LOGIC_ENABLE_HEATPUMP_VIA_PV                        = "LOGIC_ENABLE_HEATPUMP_VIA_PV"
 
 # others
 TICK_COUNTER                        = "TICK_COUNTER"
@@ -2754,15 +2869,26 @@ def configure_control():
     aTempRoom = TemperatureSource(ROOM,aTempMeasurement.get_channel_fcn(11))
     aHeatPummpControl = HeatPumpControl(HEATPUMP_CONTROL)
     aManualSwitchHeatPump = ManualSwitch(MANUAL_SWITCH_HEATPUMP)
-    # *** Heatingpump connected to Waermepumenstrom Zaehler -> Ausschaltzeiten zu Stosszeiten ***
-    # time and weekday check needed --> Sa and So the voltage for the heating pump will allways be enabled
-    # only Mo-Fr the heating pump voltage will be disabled from 11:30->13:00 and 17:30-->19:00
-    # aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,28,59,999999)),
-    #         (datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,1,59,999999),[5,6]),
-    #         (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,28,59,999999)),
-    #         (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
-    #         (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
-    aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(23,59,59,999999))])
+
+    if g_support_heatpump_via_pv:
+        # Enable Heatpump only if PV is available (via MANUAL_SWITCH) --> (MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV==1 && PV_TIME_INTERVAL) || MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV!=1
+        aManualSwitchHeapumpOnlyWithPv = ManualSwitch(MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV)
+        aLogicIsManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeatPump,1,lambda a, b: a == b)
+        aLogicIsNotManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeatPump,1,lambda a, b: a != b)
+        aPvTimeInterval = EnableTimer(ENABLE_HEAT_PUMP_FOR_PV,[(datetime.time(10,0,0),datetime.time(15,59,59,999999))])
+        aEnableHeatpumpViaPV = AndNode(LOGIC_ENABLE_HEATPUMP_VIA_PV,[aLogicIsManualSwitchHeatpumpOnlyWithPv,aPvTimeInterval])
+        aEnableHeatpumpTimer = OrNode(ENABLE_HEAT_PUMP,[aEnableHeatpumpViaPV,aLogicIsNotManualSwitchHeatpumpOnlyWithPv])
+    else:
+        # *** Heatingpump connected to Waermepumenstrom Zaehler -> Ausschaltzeiten zu Stosszeiten ***
+        # time and weekday check needed --> Sa and So the voltage for the heating pump will allways be enabled
+        # only Mo-Fr the heating pump voltage will be disabled from 11:30->13:00 and 17:30-->19:00
+        # aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,28,59,999999)),
+        #         (datetime.time(START_DISABLE_TIME1_HEATPUMP_HOUR,START_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,1,59,999999),[5,6]),
+        #         (datetime.time(END_DISABLE_TIME1_HEATPUMP_HOUR,END_DISABLE_TIME1_HEATPUMP_MINUTE,0),datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,28,59,999999)),
+        #         (datetime.time(START_DISABLE_TIME2_HEATPUMP_HOUR,START_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,1,59,999999),[5,6]),
+        #         (datetime.time(END_DISABLE_TIME2_HEATPUMP_HOUR,END_DISABLE_TIME2_HEATPUMP_MINUTE,0),datetime.time(23,59,59,999999))])
+        aEnableHeatpumpTimer = EnableTimer(ENABLE_HEAT_PUMP,[(datetime.time(0,0,0),datetime.time(23,59,59,999999))])
+
     aSwitchHeatPump = SwitchRelais(SWITCH_HEATPUMP,aRelaisMeasurement.switch_port_fcn(2))
     aOperatingHoursHeatPump = OperatingHoursCounter(OPERATING_HOURS_HEATPUMP,aSwitchHeatPump,init_value=227.0*60.0*60.0)    # 227 hours since 16.1.2024 until 13.1.2024 15:30
     aHeatPummpControl.connect_input(aTempBuffer2,aHeatPummpControl.INPUT_ID_BUFFER)
@@ -2862,7 +2988,7 @@ def configure_control():
     aControlEngine.append(aManualSwitchVentilation)
     aControlEngine.append(aManualSwitchHeatPumpSolarValve)
     aControlEngine.append(aManualSwitchBooster)
-    
+
     aControlEngine.append(aSolarMotor)
     aControlEngine.append(aHeatingMotor)
     aControlEngine.append(aSwitchMixer)
@@ -2890,6 +3016,13 @@ def configure_control():
     aControlEngine.append(aOperatingHoursMotorHeating)
     aControlEngine.append(aOperatingHoursMotorSolar)
 
+    if g_support_heatpump_via_pv:
+        aControlEngine.append(aManualSwitchHeapumpOnlyWithPv)                # new since 5.10.2024
+        aControlEngine.append(aLogicIsManualSwitchHeatpumpOnlyWithPv)        # new since 5.10.2024
+        aControlEngine.append(aLogicIsNotManualSwitchHeatpumpOnlyWithPv)     # new since 5.10.2024
+        aControlEngine.append(aPvTimeInterval)                               # new since 5.10.2024
+        aControlEngine.append(aEnableHeatpumpViaPV)                          # new since 5.10.2024
+    
     # *** IMPORTANT: ***
     # add new control items at the end of this list,
     # otherwise the data format of the csv file will be not compatible

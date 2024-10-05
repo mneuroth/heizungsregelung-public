@@ -298,6 +298,7 @@ Datum        | Aktion
 11.2.2024    | Unterstützung für PV-Anlage hinzugefügt, Grafana Exporter realisiert und Grafana Dashboard erweitert
 24.3.2024    | Erste Tests mit Raspberry Pi OS Update von Bullseye zu Debian 12 Bookworm wegen aktuellerer Python Version 3.11.2, benötigt für gleichzeitigen MariaDB Zugriff und huawei_solar Modul Unterstützung (PV-Anlage)
 19.4.2024    | Erste Unit-Tests hinzugefügt, Unterstützung der Dokumentation der Abhängigkeiten via GraphViz hinzugefügt
+5.10.2024    | Unterstützung für manuellen Schalter, damit Wärmepumpe nur läuft, falls PV-Anlage verfügbar ist (zwischen 10 Uhr und 15 Uhr)
 
 Funktionen der Heizungsregelung
 -------------------------------

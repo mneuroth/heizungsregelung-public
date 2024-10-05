@@ -7,6 +7,7 @@ import asyncio
 import threading
 import time
 import signal
+import traceback
 
 import timeline_data_tracker as tldt
 
@@ -14,6 +15,8 @@ from file_utils import *
 
 from huawei_solar import AsyncHuaweiSolar, register_names as rn
 #from huawei_solar import HuaweiSolarBridge
+
+import pv_facility_sqldb as sqldb
 
 # async def read_pv_facility_grid_infos(client, slave_id):
 #     results = await client.get_multiple([rn.GRID_EXPORTED_ENERGY, rn.GRID_ACCUMULATED_ENERGY], slave_id)
@@ -62,18 +65,32 @@ async def read_pv_facility_infos():
     results4 = await client.get_multiple([rn.INPUT_POWER], slave_id)
     #                                            (9)               (10)
     results5 = await client.get_multiple([rn.ACTIVE_POWER, rn.REACTIVE_POWER], slave_id)
+    #                                            (11)
+    results6 = await client.get_multiple([rn.INTERNAL_TEMPERATURE], slave_id)
+    #                                            (12)
+    results7 = await client.get_multiple([rn.STORAGE_UNIT_1_BATTERY_TEMPERATURE], slave_id)
 
 #TODO    # ACCUMULATED_YIELD_ENERGY == Daily Energy? == Total Consumption
 
     # close connection to give other client the possibility to query data
     #await client.stop()
 
-    return results1 + results2 + results3 + results4 + results5
+    return results1 + results2 + results3 + results4 + results5 + results6 + results7
 
 def _check_for_float(value, default_val=0.0):
     if value is not None:
         return float(value)
     return default_val
+
+def _append_to_sql_db(data_str):
+    try:
+        conn = sqldb.get_db_connection()
+        cursor = conn.cursor()
+        sqldb.insert_data_string(cursor, data_str)
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print("EXCEPTION in _append_to_sql_db():", exc)
 
 class PV_Facility:
 
@@ -95,6 +112,8 @@ class PV_Facility:
         self.input_power_8 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.INPUT_POWER)
         self.active_power_9 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.ACTIVE_POWER)
         self.reactive_power_10 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.REACTIVE_POWER)
+        self.internal_temperature_11 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.INTERNAL_TEMPERATURE)
+        self.storage_unit_1_battery_temperature_12 = tldt.SingleTimelineGrowingDataTrackerWithDeltaValues(rn.STORAGE_UNIT_1_BATTERY_TEMPERATURE)
 
     def shutdown(self):
         self.grid_exported_energy_1.shutdown()
@@ -105,6 +124,8 @@ class PV_Facility:
         self.input_power_8.shutdown()
         self.active_power_9.shutdown()
         self.reactive_power_10.shutdown()
+        self.internal_temperature_11.shutdown()
+        self.storage_unit_1_battery_temperature_12.shutdown()
         self.is_shutdown = True
 
     def save_data(self):
@@ -116,6 +137,8 @@ class PV_Facility:
         self.input_power_8.save_data()
         self.active_power_9.save_data()
         self.reactive_power_10.save_data()
+        self.internal_temperature_11.save_data()
+        self.storage_unit_1_battery_temperature_12.save_data()
         self.last_save_timestamp = datetime.datetime.now()
 
     def save_if_needed(self):
@@ -229,17 +252,20 @@ class PV_Facility:
         house_consumed_kwh = grid_import_kwh + pv_yield_kwh - grid_export_kwh
         s += f'House Consumed:     {house_consumed_kwh:8.2f} kWh\n'    # (8)    # == Huawei: Verbrauch ==> (8) = (3) - (1) + (2)
         # For sql command like:
-        # INSERT INTO `DailyPVEnergy` (`ID`, `Timestamp`, `EnergyExportGrid`, `EnergyImportGrid`, `EnergyYieldPV`, `EnergyAccuCharge`, `EnergyAccuDischarge`, `EnergyPVToHouse`, `EnergyIntoHouse`) VALUES
-        # (1, '2024-02-29 19:23:07', 26.1, 4.2, 27, 0, 0, 12.3, 14.52);
-        sql_insert_data = f"('{date_for_dump_data}',{grid_export_kwh:1.3f},{grid_import_kwh:1.3f},{pv_yield_kwh:1.3f},{_check_for_float(total_accu_charge_kwh):1.3f},{_check_for_float(total_accu_discharge_kwh):1.3f},{pv_consumed_house_kwh:1.3f},{house_consumed_kwh:1.3f})\n"
+        # INSERT INTO `DailyPVEnergy` (`Timestamp`, `EnergyExportGrid`, `EnergyImportGrid`, `EnergyYieldPV`, `EnergyAccuCharge`, `EnergyAccuDischarge`, `EnergyPVToHouse`, `EnergyIntoHouse`) VALUES
+        # ('2024-02-29 19:23:07', 26.1, 4.2, 27, 0, 0, 12.3, 14.52);
+# TODO: Zeit auf 23:59:59 fuer vorherigen Tag setzen!        
+        sql_insert_data = f"('{date_for_dump_data}',{grid_export_kwh:1.3f},{grid_import_kwh:1.3f},{pv_yield_kwh:1.3f},{_check_for_float(total_accu_charge_kwh):1.3f},{_check_for_float(total_accu_discharge_kwh):1.3f},{pv_consumed_house_kwh:1.3f},{house_consumed_kwh:1.3f})"
         s += sql_insert_data
-        return s
+        # return string which can be used to insert values into SQL database
+        return (s, sql_insert_data)
     
     def dump_all_day_values(self):
         s = ''
         max_count = len(self.grid_exported_energy_1.delta_day_cache)
         for i in range(max_count):
-            s += self.dump_last_day_values(-(max_count-i))
+            _temp, _sql_insert_data = self.dump_last_day_values(-(max_count-i))
+            s += _temp
             s += '\n'
         return s
 
@@ -257,6 +283,8 @@ class PV_Facility:
         self.input_power_8.do_measurement(lambda: pv_infos[5].value)
         self.active_power_9.do_measurement(lambda: pv_infos[6].value)
         self.reactive_power_10.do_measurement(lambda: pv_infos[7].value)
+        self.internal_temperature_11.do_measurement(lambda: pv_infos[8].value)
+        self.storage_unit_1_battery_temperature_12.do_measurement(lambda: pv_infos[9].value)
 
     def pv_run(self):
         print("entered pv_run() thread")
@@ -279,7 +307,11 @@ class PV_Facility:
                        self.active_power_9.get_signal_name(),
                        self.active_power_9.get_signal_name()+POSTFIX,
                        self.reactive_power_10.get_signal_name(),
-                       self.reactive_power_10.get_signal_name()+POSTFIX
+                       self.reactive_power_10.get_signal_name()+POSTFIX,
+                       self.internal_temperature_11.get_signal_name(),
+                       self.internal_temperature_11.get_signal_name()+POSTFIX,
+                       self.storage_unit_1_battery_temperature_12.get_signal_name(),
+                       self.storage_unit_1_battery_temperature_12.get_signal_name()+POSTFIX
                        ]
         append_to_file(sActFileName,aDataHeader,sPrefix="#")
 
@@ -295,8 +327,13 @@ class PV_Facility:
                 # show values for the last day on console:
                 current_day = datetime.datetime.now().date()
                 if current_day > self.current_day:
-                    temp = self.dump_last_day_values()
-                    print(temp)
+                    value_txt, _sql_insert_data = self.dump_last_day_values()
+                    print(value_txt)
+                    # append daily PV values into text files
+                    append_to_file(add_sdcard_path_if_available(g_sDailyPvValuesFile),_sql_insert_data)
+                    append_to_file(sActFileName,_sql_insert_data,sPrefix="#")
+                    # insert daily PV values into MariaDB
+                    _append_to_sql_db(_sql_insert_data)
                     self.current_day = current_day
 
                 if self.is_debugging:
@@ -314,6 +351,8 @@ class PV_Facility:
                 vals_6 = self.input_power_8.get_last_values()
                 vals_7 = self.active_power_9.get_last_values()
                 vals_8 = self.reactive_power_10.get_last_values()
+                vals_9 = self.internal_temperature_11.get_last_values()
+                vals_10 = self.storage_unit_1_battery_temperature_12.get_last_values()
                 aLineInfo.append(vals_1[0]) # write timestamp of measurement
                 aLineInfo.append(vals_1[1])
                 aLineInfo.append(vals_1[2])
@@ -331,6 +370,9 @@ class PV_Facility:
                 aLineInfo.append(vals_7[2])
                 aLineInfo.append(vals_8[1])
                 aLineInfo.append(vals_8[2])
+                aLineInfo.append(vals_9[1])
+                aLineInfo.append(vals_9[2])
+                aLineInfo.append(vals_10[2])
                 sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,self.is_debugging,aActDate)
                 if bNewFile:
                     append_to_file(sActFileName,aDataHeader,sPrefix="#")
@@ -347,6 +389,7 @@ class PV_Facility:
             except Exception as ex:
                 s = f"EXCEPTION in pv_run() loop at timestamp {datetime.datetime.now()}:\n{ex}"
                 print(s)
+                traceback.print_stack()
                 s = s.replace('\n',' ')
                 append_to_file(sActFileName, s, sPrefix="#")
                 measure_error_counter += 1
