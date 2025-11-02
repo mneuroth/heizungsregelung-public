@@ -173,7 +173,7 @@ Es gibt zwei Software Komponenten, die für den Betrieb des Systems notwendig si
   * optional:
     * `mariadb` (Version 1.0.11 ist getestet)
     * `prometheus_client` (Version 0.20.0 ist getestet)
-    * `huawei_solar` (Version 2.2.9 ist getestet, benötigt mindestens Python 3.10) -> [PyPi Modul](https://pypi.org/project/huawei-solar/), [Source Code](https://gitlab.com/Emilv2/huawei-solar)
+    * `huawei_solar` (Version 2.2.9 ist getestet, benötigt mindestens Python 3.10) -> [PyPi Modul](https://pypi.org/project/huawei-solar/), [Current Source Code for Adapter to HomeAssistant](https://github.com/wlcrs/huawei_solar) and [Source Code for Library](https://github.com/wlcrs/huawei-solar-lib), [Old Source Code](https://gitlab.com/Emilv2/huawei-solar)
 
 Zusätzlich gib es noch einige Tools und Skripte um das System zu atomatisieren und analysieren:
 
@@ -339,15 +339,17 @@ Installation (Software)
 Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 
 - Raspberry Pi Einrichtung
-    - Raspberry OS Linux Betriebssystem auf SD Karte einrichten (Bullseye oder Bookworm sind getestet)
+    - Raspberry OS Linux Betriebssystem auf SD Karte einrichten (Bullseye oder Bookworm sind getestet, Trixie im Test)
     - Verwende UART für RS232 auf Raspberry Pi 3 (default: Bluetooth uses UART and RS232 uses MINI-UART which is not so stable), see: [RS232 on Raspberry Pi 3](https://pi-buch.info/die-serielle-schnittstelle-auf-dem-raspberry-pi-3/)
-        - siehe umfrangreiche Dokumentation für [UART Kommunikation auf Raspberry Pi](https://www.electronicwings.com/raspberry-pi/raspberry-pi-uart-communication-using-python-and-c)
+		- siehe umfrangreiche Dokumentation für [UART Kommunikation auf Raspberry Pi](https://www.electronicwings.com/raspberry-pi/raspberry-pi-uart-communication-using-python-and-c)
         - Verwende `PL011` für UART Kommunikation und `miniuart` für die Bluetooth Kommunikation (miniuart ändert Baudrate mit CPU/GPU Frequenz und ist daher nicht so stabil wie PL011!) und ggf. `WLAN` ausschalten: --> edit `/boot/config.txt` --> neu: `/boot/firmware/config.txt`
             - `dtoverlay=pi3-miniuart-bt` oder neu: `dtoverlay=miniuart-bt` oder `dtoverlay=disable-bt`
             - `dtoverlay=pi3-disable-wifi`
             - nach Reboot sollte folgende Anzeige beim Kommando `ls -l /dev` stehen:
                 - `lrwxrwxrwx  1 root root           7 23. Mär 20:17 serial0 -> ttyAMA0`  <-- UART (stabil)
                 - `lrwxrwxrwx  1 root root           5 23. Mär 20:17 serial1 -> ttyS0`    <-- miniuart
+    - UART für Rasperry Pi 4
+	    - siehe: [`sudo raspi-config`](https://linuxconfig.org/raspberry-pi-4-enable-uart)
     - Benenne den USB-Memory-Stick in `USB_DATA` -> es sollte folgender Pfad verfügbar sein `/media/pi/USB_DATA/heating_control`
     - Docker installieren -> [Wie man Docker auf dem Raspberry Pi in 15 Minuten einrichtet | heise online](https://www.heise.de/news/Wie-man-Docker-auf-dem-Raspberry-Pi-in-15-Minuten-einrichtet-7524692.html)
         - `> curl -fsSL https://get.Docker.com -o get-Docker.sh`
@@ -398,6 +400,9 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 		   - ...		   
 	- Update des RealVNC Servers auf eine mit Bookwork funktionierende Version: 7.10.0
       - `sudo dpkg -i VNC-Server-7.10.0-Linux-ARM.deb`
+	- Trixie: Erzeuge venv für python
+      - `python3 -m venv --system-site-packages /home/pi/Documents/projects/heizung_pyenv`
+	  - starte passende Python Umgebung: `/home/pi/Documents/projects/heizung_pyenv/bin/python ...`
     - Python Umgebung aufsetzen und benötigte Module installieren (für Bookworm):
         - `apt-get install python3-pandas`
         - `apt-get install python3-sqlalchemy`
@@ -433,7 +438,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 	        - Chrome-Browser (via `start_chromium.sh`)
 		    - Watchdog Prozess zum definierten Herunterfahren des Raspberry Pi im Falle eines Stromausfalls (`start_watchdog.sh` im `strompi2` Verzeichnis)
             - Heizungsdaten Exporter Prozess zum exportieren von Daten der Heizungsregelung für Grafana (`start_exporter.sh`)
-            - Photo Voltaik Date Exporter Prozess zum exportieren von Daten der Photo Valtaik Anlage für Grafana (Echtzeitdaten) und die MariaDB (tägliche Daten) (`start_pv_exporter.sh`)
+            - Photo Voltaik Data Exporter Prozess zum exportieren von Daten der Photo Valtaik Anlage für Grafana (Echtzeitdaten) und die MariaDB (tägliche Daten) (`start_pv_exporter.sh`). Das Abfrage Intervall ist aktuell alle 5 Minuten.
                 - Für den Zugriff auf die MariaDB muss das Passwort für den User `heizung` in der `/home/pi/.bashrc` Datei gesetzt werden: `export HEIZUNG_DB_PASSWORD='<passwort>'`
 		    - Heizungsregelungs Prozess (`sudo python heizung.py -s -w -p`)
 - Heizungregelungs-Platinen Einrichtung

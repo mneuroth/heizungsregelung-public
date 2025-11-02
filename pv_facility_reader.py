@@ -42,6 +42,14 @@ import pv_facility_sqldb as sqldb
 
 async def read_pv_facility_infos():
     slave_id = 1
+    # lwip == Lightweight IP -> open source implementierung TCP/IP Protokollstapels
+    # Standard Port für Modbus TCP -> 502 
+    # siehe auch: https://solaranzeige.de/phpBB3/solaranzeige.php
+    # evcc == Electric Vehicle Charge Controller (https://de.wikipedia.org/wiki/Evcc) -> https://evcc.io/ -> https://docs.evcc.io/docs/devices/chargers
+    # https://www.photovoltaikforum.com/core/article/4-wie-arbeiten-wallbox-und-wechselrichter-miteinander/
+    # Bemerkung: nur ein Client via Modbus an einem Huawei Gleichrichter ist möglich !!
+    # Bemerkung: maximale Abfrage Frequenz 1 Hz laut Uuawei -> typisch 2-5 Sekunden
+    # Bemerkung: Raspberry Pi könnte ein Modbus-Proxy sein -> fragt Wechselrichter alle 2 s ab und stellt per MQTT oder REST Daten zur Verfügung !!!
     client = await AsyncHuaweiSolar.create("lwip", 502, slave_id)  # ip=192.168.178.49  # TODO: timeout=30.0, cooldown_time=10.0 ???
     #print("-->",client)
 
@@ -231,17 +239,22 @@ class PV_Facility:
             PV consumed house:     11.33 kWh   
             House Consumed:        16.87 kWh
         """
+        def _check_none(val):
+            if val is None:
+                return 0.0
+            return val
+            
         s = ''
         date_for_dump_data = datetime.datetime.now().date()-datetime.timedelta(days=abs(index_from_last))
         s += f'Values for last day ({date_for_dump_data}), Timestamp: {datetime.datetime.now()}\n'
         s +=  '--------------------------------\n'
-        grid_export_kwh = self.grid_exported_energy_1.get_last_day_delta_value(index_from_last)
-        grid_import_kwh = self.grid_accumulated_energy_2.get_last_day_delta_value(index_from_last)
-        pv_yield_kwh = self.accumulated_yield_energy_3.get_last_day_delta_value(index_from_last)
-        accu_charge_kwh = self.storage_total_charge_energy_4.get_last_day_delta_value(index_from_last)
-        total_accu_charge_kwh = self.storage_total_charge_energy_4.get_last_day_value(index_from_last)
-        accu_discharge_kwh = self.storage_total_discharge_energy_5.get_last_day_delta_value(index_from_last)
-        total_accu_discharge_kwh = self.storage_total_discharge_energy_5.get_last_day_value(index_from_last)
+        grid_export_kwh = _check_none(self.grid_exported_energy_1.get_last_day_delta_value(index_from_last))
+        grid_import_kwh = _check_none(self.grid_accumulated_energy_2.get_last_day_delta_value(index_from_last))
+        pv_yield_kwh = _check_none(self.accumulated_yield_energy_3.get_last_day_delta_value(index_from_last))
+        accu_charge_kwh = _check_none(self.storage_total_charge_energy_4.get_last_day_delta_value(index_from_last))
+        total_accu_charge_kwh = _check_none(self.storage_total_charge_energy_4.get_last_day_value(index_from_last))
+        accu_discharge_kwh = _check_none(self.storage_total_discharge_energy_5.get_last_day_delta_value(index_from_last))
+        total_accu_discharge_kwh = _check_none(self.storage_total_discharge_energy_5.get_last_day_value(index_from_last))
         accu_balance_kwh = accu_charge_kwh - accu_discharge_kwh if accu_charge_kwh is not None and accu_discharge_kwh is not None else 0.0
         s += f'PV Export to Grid:  {grid_export_kwh:8.2f} kWh\n'       # (1)    # == Huawei: Ins Netz eingespeist
         s += f'Consumed from Grid: {grid_import_kwh:8.2f} kWh\n'       # (2)    # == Huawei: Vom Netz

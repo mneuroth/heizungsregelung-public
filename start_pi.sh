@@ -1,3 +1,5 @@
+#export PATH=/home/pi/Documents/projects/heizung_pyenv/bin:$PATH
+#echo $PATH
 cd ~/Documents/projects/heizungsregelung
 lxterminal --command="/bin/bash --init-file '~/Documents/projects/heizungsregelung/strompi2/start_watchdog.sh'"
 netstat -a | grep 42424
@@ -19,8 +21,10 @@ lxterminal --command="/bin/bash --init-file '~/Documents/projects/heizungsregelu
 while true
 do
    echo "============> starting heating control <=============="
-   sudo python heizung.py -s -w -p
+   sudo /home/pi/Documents/projects/heizung_pyenv/bin/python heizung.py -s -w -p
    #test: sudo python heizung.py -t -i
    echo "------------> heating control stoped ! <--------------"
    python -c "import time; time.sleep(15)"
 done
+# see: https://superuser.com/questions/392728/bashrc-not-sourced-in-a-new-lxterminal-window
+# see: https://forums.raspberrypi.com/viewtopic.php?t=9817
