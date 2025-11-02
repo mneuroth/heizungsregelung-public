@@ -1,2 +1,2 @@
 sleep 15
-python ~/Documents/projects/heizungsregelung/heizung_exporter.py
+/home/pi/Documents/projects/heizung_pyenv/bin/python ~/Documents/projects/heizungsregelung/heizung_exporter.py
