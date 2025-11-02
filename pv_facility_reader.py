@@ -13,7 +13,7 @@ import timeline_data_tracker as tldt
 
 from file_utils import *
 
-from huawei_solar import AsyncHuaweiSolar, register_names as rn
+from huawei_solar import AsyncHuaweiSolar, ConnectionException, register_names as rn
 #from huawei_solar import HuaweiSolarBridge
 
 import pv_facility_sqldb as sqldb
@@ -260,11 +260,15 @@ class PV_Facility:
         # return string which can be used to insert values into SQL database
         return (s, sql_insert_data)
     
-    def dump_all_day_values(self):
+    def dump_all_day_values(self, no_of_days=None):
         s = ''
         max_count = len(self.grid_exported_energy_1.delta_day_cache)
-        for i in range(max_count):
-            _temp, _sql_insert_data = self.dump_last_day_values(-(max_count-i))
+        if no_of_days is None:
+            max_output = max_count
+        else:
+            max_output = no_of_days
+        for i in range(max_output):
+            _temp, _sql_insert_data = self.dump_last_day_values(-(max_output-i))
             s += _temp
             s += '\n'
         return s
@@ -285,6 +289,17 @@ class PV_Facility:
         self.reactive_power_10.do_measurement(lambda: pv_infos[7].value)
         self.internal_temperature_11.do_measurement(lambda: pv_infos[8].value)
         self.storage_unit_1_battery_temperature_12.do_measurement(lambda: pv_infos[9].value)
+
+    def _test_for_restart_or_sleep(self, measure_error_counter, sActFileName):
+        measure_error_counter += 1
+        if measure_error_counter > 30:  # try to restart every 30 minutes !
+            append_to_file(sActFileName, f"WARNING: shutdown pv_facility_reader.py now... (timestamp={datetime.datetime.now()})", sPrefix="#")
+            self.shutdown()     # saves also the data !
+            if self.fcn_trigger_shutdown is not None:
+                self.fcn_trigger_shutdown()
+        else:
+            time.sleep(60)
+        return measure_error_counter
 
     def pv_run(self):
         print("entered pv_run() thread")
@@ -316,25 +331,28 @@ class PV_Facility:
         append_to_file(sActFileName,aDataHeader,sPrefix="#")
 
         # dump the infos of the last days at startup !
-        print(self.dump_all_day_values())
+        print(self.dump_all_day_values(14))
 
         measure_error_counter = 0
+        connected_with_huawei_pv_converter = False
         while not self.is_shutdown:
             try:
-                self._measure()
-                measure_error_counter = 0
-
                 # show values for the last day on console:
-                current_day = datetime.datetime.now().date()
+                _now = datetime.datetime.now()
+                current_day = _now.date()
                 if current_day > self.current_day:
-                    value_txt, _sql_insert_data = self.dump_last_day_values()
+                    value_txt, _sql_insert_data = self.dump_last_day_values() #index_from_last=0)  # 0 because the values of the new day was not written into the timeline_date_tracker !
                     print(value_txt)
                     # append daily PV values into text files
                     append_to_file(add_sdcard_path_if_available(g_sDailyPvValuesFile),_sql_insert_data)
-                    append_to_file(sActFileName,_sql_insert_data,sPrefix="#")
+                    append_to_file(sActFileName,_sql_insert_data,sPrefix="#",sPostfix=f" # timestamp: {_now}")
                     # insert daily PV values into MariaDB
+# TODO -> trage um Mitternacht auf jeden Fall die aktuellen Werte fuer den letzten Tag in die Datenbank ein ! ??? -> self.current_day persistent machen???
                     _append_to_sql_db(_sql_insert_data)
                     self.current_day = current_day
+
+                self._measure()
+                measure_error_counter = 0
 
                 if self.is_debugging:
                     print("GRID_EXPORTED:", self.grid_exported_energy_1.signal_value_and_delta_cache)
@@ -376,30 +394,38 @@ class PV_Facility:
                 sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,self.is_debugging,aActDate)
                 if bNewFile:
                     append_to_file(sActFileName,aDataHeader,sPrefix="#")
-                append_to_file(sActFileName,aLineInfo)
+                append_to_file(sActFileName,aLineInfo,sPostfix=f" # ts={datetime.datetime.now()}")
 
                 # save the data every hour
                 self.save_if_needed()
+
+                connected_with_huawei_pv_converter = True
 
                 delay_tick = 0.0
                 while not self.is_shutdown and delay_tick < PV_Facility.DELAY:
                     time.sleep(1.0)
                     delay_tick += 1.0
 
-            except Exception as ex:
-                s = f"EXCEPTION in pv_run() loop at timestamp {datetime.datetime.now()}:\n{ex}"
+            except ConnectionException as ex:
+                # Huawei PV converter may be switched off !
+                s = f"EXCEPTION in pv_run() loop at timestamp {datetime.datetime.now()}: Could not connect to Huawei PV Converter -> switched off or power save modus? measure_error_counter={measure_error_counter}"
                 print(s)
-                traceback.print_stack()
+                traceback.print_exception(ex)
+                if connected_with_huawei_pv_converter:
+                    # write this message only once into data file if the connection to the huawei pv converter is lost because of power save modus
+                    append_to_file(sActFileName, s, sPrefix="#")
+                connected_with_huawei_pv_converter = False
+                measure_error_counter = self._test_for_restart_or_sleep(measure_error_counter, sActFileName)
+            except Exception as ex:
+                s = f"EXCEPTION in pv_run() loop at timestamp {datetime.datetime.now()}:\n{type(ex)}\n{ex}"
+                print(s)
+                traceback.print_exception(ex)
+                #traceback.print_stack()
+                s += ' -> '
+                s += ''.join(traceback.format_exception(ex))
                 s = s.replace('\n',' ')
                 append_to_file(sActFileName, s, sPrefix="#")
-                measure_error_counter += 1
-                if measure_error_counter > 20:
-                    append_to_file(sActFileName, "WARNING: shutdown pv_facility_reader.py now...", sPrefix="#")
-                    self.shutdown()     # saves also the data !
-                    if self.fcn_trigger_shutdown is not None:
-                        self.fcn_trigger_shutdown()
-                else:
-                    time.sleep(10)
+                measure_error_counter = self._test_for_restart_or_sleep(measure_error_counter, sActFileName)
 
         print("pv_run() thread stoped.")
 

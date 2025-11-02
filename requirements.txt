@@ -1,7 +1,9 @@
 pyserial==3.5
 #mariadb==1.0.11
+#pymysql
 prometheus_client==0.20.0
 huawei_solar==2.2.9
+requests
 pytz
 pyserial-asyncio
 pymodbus

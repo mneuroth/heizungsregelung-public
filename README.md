@@ -35,7 +35,7 @@ Foto:
 
 Blockdiagramm des [Software Systems](bilder):
 
-<img src="documentation/BlockDiagrammSoftware.png" alt="BlockdiagrammSoftware" >
+<img src="documentation/BlockDiagrammSoftwareWithSql.png" alt="BlockdiagrammSoftware" >
 
 ***
 
@@ -173,7 +173,7 @@ Es gibt zwei Software Komponenten, die für den Betrieb des Systems notwendig si
   * optional:
     * `mariadb` (Version 1.0.11 ist getestet)
     * `prometheus_client` (Version 0.20.0 ist getestet)
-    * `huawei_solar` (Version 2.2.9 ist getestet, benötigt mindestens Python 3.10)
+    * `huawei_solar` (Version 2.2.9 ist getestet, benötigt mindestens Python 3.10) -> [PyPi Modul](https://pypi.org/project/huawei-solar/), [Source Code](https://gitlab.com/Emilv2/huawei-solar)
 
 Zusätzlich gib es noch einige Tools und Skripte um das System zu atomatisieren und analysieren:
 
@@ -374,6 +374,17 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
         - [Prometheus Linux Node Exporter](http://heizungsregelung:9100/) (Exporter-Test im Browser)
         - [Prometheus Heizungsregelung Exporter](http://heizungsregelung:9110/) (Exporter-Test im Browser)
         - [Prometheus PV-Anlage Exporter](http://heizungsregelung:9120/) (Exporter-Test im Browser)
+    - Installation und Konfiguration der MariaDB Datenbank (siehe [Dokumentation](https://raspberrytips.com/install-mariadb-raspberry-pi/))
+        - `sudo apt-get install mariadb-server`
+        - `sudo mysql_secure_installation`
+        - `sudo mysql -uroot -p`
+            - `show databases;`
+            - `CREATE DATABASE heizung;` -> databases can be found in directory `/var/lib/mysql`
+            - `CREATE USER 'heizung'@'%' IDENTIFIED BY '<password>';`
+            - `GRANT ALL PRIVILEGES ON heizung.* TO 'heizung'@'%';`
+            - `FLUSH PRIVILEGES;`
+            - erlaube beliebigen Zugriff aus dem Netzwerk auf die Datenbank auf dem Raspberry Pi:
+                - kommentiere den Eintrag `bind-address = 127.0.0.1` im Verzeichnis `/etc/mysql/mariadb.conf.d/50-server.cnf
     - Konfiguration des Raspberry Pi anpassen (via `sudo raspi-config`)
        - Name: `heizungsregelung` -> Zugriff über http://heizungsregelung möglich
        - Schnittstellen aktivieren (Raspberry Pi Konfigurations-Menu):
@@ -383,7 +394,7 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 	   - Schnittstellen deaktivieren:
 		   - SPI
 		   - I2C
-		   - Serial Consoleg
+		   - Serial Console
 		   - ...		   
 	- Update des RealVNC Servers auf eine mit Bookwork funktionierende Version: 7.10.0
       - `sudo dpkg -i VNC-Server-7.10.0-Linux-ARM.deb`
@@ -421,6 +432,9 @@ Schritte zur Installation und Einrichtung des Heizungregelungs Software Systems:
 	    - In diesem Autostart Skript werden folgende Prozesse gestartet:
 	        - Chrome-Browser (via `start_chromium.sh`)
 		    - Watchdog Prozess zum definierten Herunterfahren des Raspberry Pi im Falle eines Stromausfalls (`start_watchdog.sh` im `strompi2` Verzeichnis)
+            - Heizungsdaten Exporter Prozess zum exportieren von Daten der Heizungsregelung für Grafana (`start_exporter.sh`)
+            - Photo Voltaik Date Exporter Prozess zum exportieren von Daten der Photo Valtaik Anlage für Grafana (Echtzeitdaten) und die MariaDB (tägliche Daten) (`start_pv_exporter.sh`)
+                - Für den Zugriff auf die MariaDB muss das Passwort für den User `heizung` in der `/home/pi/.bashrc` Datei gesetzt werden: `export HEIZUNG_DB_PASSWORD='<passwort>'`
 		    - Heizungsregelungs Prozess (`sudo python heizung.py -s -w -p`)
 - Heizungregelungs-Platinen Einrichtung
     - [Arduino IDE](https://www.arduino.cc/en/software) herunterladen und installieren

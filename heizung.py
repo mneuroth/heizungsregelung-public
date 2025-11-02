@@ -128,6 +128,7 @@ import traceback
 import signal
 
 import serial
+import requests
 
 from functools import wraps
 
@@ -230,8 +231,8 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.8.3"
-__date__    = "5.10.2024"
+__version__ = "2.8.4"
+__date__    = "9.11.2024"
 # *************************************************************************
 START_YEAR = 2010
 
@@ -1464,6 +1465,36 @@ class DataSource(SignalProcessor):
             return None
         
 # *************************************************************************
+class Esp32HttpTemperature(DataSource):
+
+    def __init__(self,sName):
+        super(Esp32HttpTemperature,self).__init__(sName,fcnDataSource=self.read_temperature)
+        self.last_value = -1.0
+
+    def read_temperature(self):
+        url = "http://192.168.178.50"
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code == 200:
+                txt = response.text
+                TEMPERATURE = "Temperature:"
+                pos_start = txt.find(TEMPERATURE)
+                pos_stop = txt.find("&deg;")
+                if pos_start>=0 and pos_stop>=0:
+                    val = float(txt[pos_start+len(TEMPERATURE):pos_stop])
+                else:
+                    val = 0.0
+                self.last_value = val
+                return val
+        except requests.Timeout:
+            pass
+        except requests.RequestException as e:
+            print("Error in read_temperature() via requests:", e)
+        except Exception as e:
+            print("Error in read_temperature():", e)
+        return self.last_value
+
+# *************************************************************************
 class TickCounterSource(DataSource):
 
     def __init__(self,sName):
@@ -2556,6 +2587,7 @@ INGOING_AIR                         = "INGOING_AIR"
 CONVERTER                           = "CONVERTER"
 ROOM                                = "ROOM"                    # new since 25.11.2018
 TESTSENSOR_PT1000                   = "TESTSENSOR_PT1000"       # new since 1.1.2018
+ESP32_HTTP_TEMP                     = "ESP32_HTTP_TEMP"         # new since 9.11.2024
 # other objects from temperature manager
 ARDURINO_COUNT                      = "ARDURINO_COUNT"
 TIMELINE                            = "TIMELINE"                # new since 5.1.2019
@@ -2758,7 +2790,9 @@ def configure_control():
     aLightSensor2 = LightSource("LIGHT2",aTempMeasurement.get_channel_fcn(11))
     
     aTimeline = Timeline(TIMELINE)
-    
+
+    aEsp32HttpTemperature = Esp32HttpTemperature(ESP32_HTTP_TEMP)
+
     # Solar Kollektor Regelung
     #   Solar Pumpe
     aTempSolar = TemperatureSource(SOLAR_KVLF,aTempMeasurement.get_channel_fcn(0))
@@ -2873,8 +2907,8 @@ def configure_control():
     if g_support_heatpump_via_pv:
         # Enable Heatpump only if PV is available (via MANUAL_SWITCH) --> (MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV==1 && PV_TIME_INTERVAL) || MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV!=1
         aManualSwitchHeapumpOnlyWithPv = ManualSwitch(MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV)
-        aLogicIsManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeatPump,1,lambda a, b: a == b)
-        aLogicIsNotManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeatPump,1,lambda a, b: a != b)
+        aLogicIsManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeapumpOnlyWithPv,1,lambda a, b: a == b)
+        aLogicIsNotManualSwitchHeatpumpOnlyWithPv = CompareToValueNode(LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV,aManualSwitchHeapumpOnlyWithPv,1,lambda a, b: a != b)
         aPvTimeInterval = EnableTimer(ENABLE_HEAT_PUMP_FOR_PV,[(datetime.time(10,0,0),datetime.time(15,59,59,999999))])
         aEnableHeatpumpViaPV = AndNode(LOGIC_ENABLE_HEATPUMP_VIA_PV,[aLogicIsManualSwitchHeatpumpOnlyWithPv,aPvTimeInterval])
         aEnableHeatpumpTimer = OrNode(ENABLE_HEAT_PUMP,[aEnableHeatpumpViaPV,aLogicIsNotManualSwitchHeatpumpOnlyWithPv])
@@ -3023,6 +3057,8 @@ def configure_control():
         aControlEngine.append(aPvTimeInterval)                               # new since 5.10.2024
         aControlEngine.append(aEnableHeatpumpViaPV)                          # new since 5.10.2024
     
+    aControlEngine.append(aEsp32HttpTemperature)
+
     # *** IMPORTANT: ***
     # add new control items at the end of this list,
     # otherwise the data format of the csv file will be not compatible

@@ -26,8 +26,8 @@ import libclient
 
 from prometheus_client import start_http_server, Gauge, Enum
 
-__version__ = "1.0.2    "
-__date__    = "7.5.2023"
+__version__ = "1.0.3"
+__date__    = "9.11.2024"
 
 def create_request(action, value):
     return dict(
@@ -81,6 +81,7 @@ class AppMetrics:
         self.temp_solar_kvlf = Gauge("temp_solar_kvlfr", "Solar KVLF Temperature")
         self.temp_mixer_heating = Gauge("temp_mixer_heating", "Mixer Heating Temperature")
         self.temp_heat_creator = Gauge("temp_heat_creator", "Heat Creator Temperature")
+        self.temp_esp32_http = Gauge("temp_esp32_http", "ESP32 Http Temperature")
 
         self.switch_motor_solar = Gauge("switch_motor_solar", "Switch Motor Solar")
         self.switch_motor_heating = Gauge("switch_motor_heating", "Switch Motor Heating")
@@ -127,11 +128,12 @@ class AppMetrics:
             self.temp_buffer1.set(status_data["BUFFER1"])
             self.temp_buffer2.set(status_data["BUFFER2"])
             self.temp_outgoing_air.set(status_data["OUTGOING_AIR"])
-            self.temp_ingoing_air.set(status_data["INGOING_AIR"])
+            self.temp_ingoing_air.set(status_data["INGOING_AIR"])   # == temp_board
             self.temp_solar_slvf.set(status_data["SOLAR_SLVF"])
             self.temp_solar_kvlf.set(status_data["SOLAR_KVLF"])
             self.temp_mixer_heating.set(status_data["MIXER_HEATING"])
             self.temp_heat_creator.set(status_data["HEAT_CREATOR"])
+            self.temp_esp32_http.set(status_data["ESP32_HTTP_TEMP"])
 
             self.switch_motor_solar.set(check_for_none(status_data["SWITCH_MOTOR_SOLAR"]))
             self.switch_motor_heating.set(check_for_none(status_data["SWITCH_MOTOR_HEATING"]))

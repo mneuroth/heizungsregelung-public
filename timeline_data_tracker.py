@@ -42,6 +42,8 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
 
         self.load_data()
 # TODO -> write to database
+        
+        #print(self.delta_day_cache)
 
     def shutdown(self):
         self.save_data()
@@ -111,6 +113,9 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
                 return (None, None, None)
             return self.delta_day_cache[index_from_last]
 
+    def get_last_day_value(self, index_from_last = -1):
+        return self._get_last_day_value(index_from_last)[1]
+
     def get_last_day_delta_value(self, index_from_last = -1):
         return self._get_last_day_value(index_from_last)[2]
 
@@ -126,7 +131,7 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
             current_date = current_timestamp.date()
 
             # handle delta values
-            if self.last_delta_measurement_value is not None:
+            if self.last_delta_measurement_value is not None and current_value is not None:
                 delta_value = current_value - self.last_delta_measurement_value
             else:
                 delta_value = 0.0 # == initial value
@@ -136,7 +141,7 @@ class SingleTimelineGrowingDataTrackerWithDeltaValues:
 
             # check for caching of delta day values
             if current_date > self.last_measurement_date:
-                if self.last_day_measurement is not None:
+                if self.last_day_measurement is not None and current_value is not None:
                     delta_for_last_day = current_value - self.last_day_measurement
                 else:
                     delta_for_last_day = current_value

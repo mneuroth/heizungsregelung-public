@@ -12,6 +12,11 @@ from pv_facility_reader import PV_Facility
 
 from prometheus_client import start_http_server, Gauge, Enum
 
+def _check_for_none_temperature(val):
+    if val is None:
+        return 0.0
+    return val
+
 class AppMetrics:
     """
     Representation of Prometheus metrics and loop to fetch and transform
@@ -89,6 +94,8 @@ class AppMetrics:
         self.imput_power = Gauge("input_power", "Input Power")
         self.active_power = Gauge("active_power", "Active Power")
         self.reactive_power = Gauge("reactive_power", "Reactive Power")
+        self.internal_temperature = Gauge("internal_temperature", "Internal Temperature")
+        self.storage_unit_1_battery_temperature = Gauge("storage_unit_1_battery_temperature", "Storage Unit 1 Battery Temperature")
 
     def trigger_shutdown(self):
         """Trigger a shutdown of this process"""
@@ -108,7 +115,7 @@ class AppMetrics:
             # # show values for the last day on console:
             # current_day = datetime.datetime.now().date()
             # if current_day > self.current_day:
-            #     temp = self.pv_facility.dump_last_day_values()
+            #     temp, sql_insert_data = self.pv_facility.dump_last_day_values()
             #     print(temp)
             #     self.current_day = current_day
                 
@@ -194,6 +201,12 @@ class AppMetrics:
         self.active_power.set(active_power)
         reactive_power = self.pv_facility.reactive_power_10.get_last_value()
         self.reactive_power.set(reactive_power)
+        internal_temperature = self.pv_facility.internal_temperature_11.get_last_value()
+        internal_temperature = _check_for_none_temperature(internal_temperature)
+        self.internal_temperature.set(internal_temperature)
+        storage_unit_1_battery_temperature = self.pv_facility.storage_unit_1_battery_temperature_12.get_last_value()
+        storage_unit_1_battery_temperature = _check_for_none_temperature(storage_unit_1_battery_temperature)
+        self.storage_unit_1_battery_temperature.set(storage_unit_1_battery_temperature)
 
 def main():
     """Main entry point"""

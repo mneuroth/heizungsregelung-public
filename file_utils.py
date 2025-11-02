@@ -13,6 +13,7 @@ PERSISTENCE_EXTENSION = ".persistence"
 
 g_sLogFile = "data/temperatures.csv"
 g_sPvLogFile = "data/pv_facility.csv"
+g_sDailyPvValuesFile = "data/pv_facility_daily.txt"
 
 g_sPersistencePath = "persistence"
 g_sCachePath = "cache"
@@ -25,7 +26,7 @@ def list_to_csv_line(aList):
         s += str(e) if e!=None else ""
     return s
 
-def append_to_file(sFileName,aData,sPrefix="",sHeaderForNewFile=None):
+def append_to_file(sFileName,aData,sPrefix="",sPostfix="",sHeaderForNewFile=None):
     if os.path.exists(sFileName):
         aFile = open(sFileName,"a")
     else:
@@ -33,7 +34,7 @@ def append_to_file(sFileName,aData,sPrefix="",sHeaderForNewFile=None):
         verify_path(sFileName)
         aFile = open(sFileName,"w")
     txt = list_to_csv_line(aData) if isinstance(aData, (list, tuple)) else str(aData)
-    aFile.write(sPrefix+txt+"\n")
+    aFile.write(sPrefix+txt+sPostfix+"\n")
     aFile.close()
 
 def verify_path(sFileNameWithPath):

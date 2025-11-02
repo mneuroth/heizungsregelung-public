@@ -268,6 +268,18 @@
           "legendFormat": "__auto",
           "range": true,
           "refId": "K"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "temp_esp32_http",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "L"
         }
       ],
       "title": "Temperaturen",
@@ -493,33 +505,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "{__name__=\"used_house_delta_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}",
-                  "{__name__=\"pv_consumed_house_delta_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 9,
@@ -612,6 +598,18 @@
           "legendFormat": "__auto",
           "range": true,
           "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "grid_exported_delta_energy",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "G"
         }
       ],
       "title": "PV Anlage Energie",
@@ -672,33 +670,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "{__name__=\"yield_delta_power\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}",
-                  "{__name__=\"pv_consumed_house_delta_power\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 11,
@@ -791,6 +763,18 @@
           "legendFormat": "__auto",
           "range": true,
           "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "grid_exported_delta_power",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "G"
         }
       ],
       "title": "PV Anlage Leistung",
@@ -859,7 +843,8 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"pv_consumed_house_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
+                  "{__name__=\"storage_charge_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}",
+                  "{__name__=\"storage_discharge_energy\", instance=\"192.168.178.40:9120\", job=\"prometheus\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -985,6 +970,114 @@
       ],
       "title": "PV Anlage accumulierte Energie",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMin": -1,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true,
+          "width": 250
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "internal_temperature",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "storage_unit_1_battery_temperature",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "PV Temperature",
+      "type": "timeseries"
     }
   ],
   "refresh": false,
@@ -996,13 +1089,13 @@
     "list": []
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "4Prod Heinzungsregelung",
   "uid": "aPa8n1Y4kY",
-  "version": 18,
+  "version": 24,
   "weekStart": ""
 }
