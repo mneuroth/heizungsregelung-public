@@ -16,6 +16,7 @@ lxterminal --command="/bin/bash --init-file '~/Documents/projects/heizungsregelu
 #    netstat -a | grep 42425
 #done
 lxterminal --command="/bin/bash --init-file '~/Documents/projects/heizungsregelung/start_pv_exporter.sh'"
+lxterminal --command="/bin/bash --init-file '~/Documents/projects/heizungsregelung/start_flask.sh'"
 #./start_chromium.sh &
 ./start_firefox.sh &
 while true

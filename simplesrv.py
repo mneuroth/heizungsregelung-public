@@ -127,6 +127,7 @@ import time
 import sys
 import os
 import os.path
+import json
 
 try:
     from SimpleHTTPServer import SimpleHTTPRequestHandler as SimpleHTTPRequestHandler
@@ -243,7 +244,7 @@ def get_plot_html_page(arr,aTimelineForXAxis=None):
 <html>
 	<head>
 		<title>Measurement Plot</title>
-		<script src="Chart.min.js"></script>
+		<script src="static/Chart.min.js"></script>
 		<meta name="viewport" content="initial-scale = 1, user-scalable = no">
 		<style>
 			canvas{
@@ -298,12 +299,12 @@ def get_open_closed_none_form(name,value):
         closeChecked = ""
         noneChecked = ""
     sForm = """
-<form action="http://127.0.0.1:%s/help.html" method="get">
+<form action="openclosednone" method="get">
     <input type="radio" name="value" value="open" onclick="JSRequest('%s',1)" %s> Open
     <input type="radio" name="value" value="stop" onclick="JSRequest('%s',0)" %s> Close
     <input type="radio" name="value" value="close" onclick="JSRequest('%s',-1)" %s> Stop
     <input type="@radio" name="value" value="none" onclick="JSRequest('%s',null)" %s> None
-</form>""" % (g_http_port_no,name,openChecked,name,stopChecked,name,closeChecked,name,noneChecked)
+</form>""" % (name,openChecked,name,stopChecked,name,closeChecked,name,noneChecked)     # g_http_port_no,
     return sForm
 
 def get_on_off_form(name,value):
@@ -320,11 +321,11 @@ def get_on_off_form(name,value):
         offChecked = "checked"
         noneChecked = ""
     sForm = """
-<form action="http://127.0.0.1:%s/help.html" method="get">
+<form action="onoff" method="get">
     <input type="radio" name="value" value="on" onclick="JSRequest('%s',1)" %s> On
     <input type="radio" name="value" value="off" onclick="JSRequest('%s',0)" %s> Off
     <input type="radio" name="value" value="none" onclick="JSRequest('%s',null)" %s> None
-</form>""" % (g_http_port_no,name,onChecked,name,offChecked,name,noneChecked)
+</form>""" % (name,onChecked,name,offChecked,name,noneChecked)   # g_http_port_no,
     return sForm
         
 def get_stop_form():
@@ -332,7 +333,175 @@ def get_stop_form():
 <form action="stop" method="get">
       <input type="submit" value=" Stop Control ">      
 </form>"""
-    return sForm        
+    return sForm
+
+def get_view(data,bExtended=False):
+    sScript = """<script type="text/javascript">
+// reload the page ...
+//window.setTimeout(function () { location.reload(1); }, 5000);
+
+function JSRequest(name,val) {
+var xhReq = new XMLHttpRequest();
+if( val==null )
+xhReq.open("GET", "write?"+name+"=None", false);
+else  
+xhReq.open("GET", "write?"+name+"="+val, false);
+xhReq.send();
+var serverResponse = xhReq.responseText;
+//alert(serverResponse);
+//ggf. delay falls wert setzten langsamer als update ist !!! ...
+window.location.reload();
+}
+</script>
+    """
+    s = "<html>"
+    #s += '<meta http-equiv="refresh" content="3" />'
+    s += "<head>"
+    ##s += '<script src="Chart.min.js"></script>'
+    s += "</head>"
+    ##s += '<canvas id="myCanvas" height="450" width="600"></canvas>'
+    s += sScript
+    #s += '<body onload="drawCanvas()">'
+    s += '<a href="plot.html">Measurement Plots<a/>'
+    # if bExtended:
+    #     data = self._read_data_extended()
+    # else:
+    #     data = self._read_data()
+    #print("###############################>>>",data)    # ->  {'ACT_TICK': 0, 'MASTER_ID': 'None', 'TEMP_MEAS': None, 'LIGHT1': 5.32, 'LIGHT2': 23.23, 'SOLAR_KVLF': 25.46, 'SOLAR_SLVF': 65.66, 'OUTDOOR': 7.12, 'MIXER_HEATING': 28.86, 'BUFFER1': 41.27, 'BUFFER2': 38.59, 'OUTGOING_AIR': 14.96, 'WARM_WATER': 81.04, 'HEAT_CREATOR': 20.68, 'CONVERTER': 5.32, 'ROOM': 23.23, 'SOLAR_CONTROL': 0, 'HEATING_CONTROL': 1, 'HEATING_CONTROL_SWITCH_ON_TEMP': 10.0, 'MIXER_HEATING_DES': 24.5, 'MIXER_HEATING_DES_CURRENT_DESIRED_TEMPERATURE': 24.5, 'MIXER_HEATING_DES_CURRENT_MAX_TEMPERATURE': 28.0, 'MIXER_HEATING_CONTROL': -1, 'HEATPUMP_CONTROL': None, ... }
+    sm = "<table>"
+    sm += "<tr><th>Name</th><th>Value</th><th>Action</th></tr>"
+    smv = "<table>"
+    smv += "<tr><th>Name</th><th>Value</th><th>Action</th></tr>"
+    si = "<table>"
+    si += "<tr><th>Name</th><th>Value</th></tr>"
+    sv = "<table>"
+    if bExtended:
+        sv += "<tr><th>Name</th><th>Value [°C]</th><th>Std Dev</th></tr>"
+    else:
+        sv += "<tr><th>Name</th><th>Value [°C]</th></tr>"
+    ss = "<table>"
+    ss += "<tr><th>Name</th><th>Value</th></tr>"
+    sc = "<table>"
+    sc += "<tr><th>Name</th><th>Value</th></tr>"
+    so = "<table>"
+    so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th><th>Value Day Histogram [h]</th></tr>"
+    sp = "<table>"
+    sp += "<tr><th>Name</th><th>Value</th></tr>"
+    for e in data:
+        if bExtended:
+            if type(data[e])==tuple:
+                val = data[e][0]
+                stddev = data[e][1]
+            else:
+                val = data[e]
+                stddev = -1.0
+        else:
+            val = data[e]
+            stddev = 0.0
+        if e in ["MASTER_ID","TICK_COUNTER","ARDURINO_COUNT","WATCHDOG","ACT_TICK","TIMELINE","ENABLE_HEATING_MOTOR","ENABLE_HEATING_MOTOR_NIGHT","ENABLE_HEATING_MOTOR_VALUE","ENABLE_HEATING_MOTOR_DATE_AND_VALUE","ENABLE_HEATING_MOTOR_DATE","ENABLE_DATE_HEATING_MOTOR","ENABLE_MIXER_CLOSE","ENABLE_ANTI_FIXING_SWITCH","ENABLE_MIXER_MOVEMENT","ENABLE_HEATING_MOTOR_ALL_INPUTS","ENABLE_HEAT_PUMP","NOT_MANUAL_SWITCH_HEATING_DATE","TEMP_MEAS","RELAIS_MEAS","LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_ENABLE_HEATPUMP_VIA_PV","ENABLE_HEAT_PUMP_FOR_PV"]:
+            sp += "<tr>"
+            sp += "<td>"+e+"</td>"
+            sp += "<td>"+str(val)+"</td>"
+            sp += "</tr>"
+        elif e in ["HEATPUMP_CONTROL_SWITCH_OFF_AIR_TEMP","MIXER_HEATING_DES","HEATPUMP_CONTROL_SWITCH_OFF_TEMP","MIXER_HEATING_DES_SWITCH_ON_TEMP","HEATING_CONTROL_SWITCH_ON_TEMP", "HEATPUMP_CONTROL_SWITCH_ON_TEMP", "SWITCH_MIXER_HEATING_CURRENT_OPEN_COUNT", "MIXER_HEATING_DES_CURRENT_DESIRED_TEMPERATURE", "MIXER_HEATING_DES_CURRENT_MAX_TEMPERATURE"]:
+            smv += "<tr>"
+            smv += "<td>"+e+"</td>"
+            smv += "<td>"+str(val)+"</td>"
+            smv += "</tr>"
+        elif e.count("_INTERVALS")>0:
+            si += "<tr>"
+            si += "<td>"+e+"</td>"
+            si += "<td>"+str(val)+"</td>"
+            si += "</tr>"
+        elif e.startswith("MANUAL_SWITCH_MIXER_HEATING"):
+            sm += "<tr>"
+            sm += "<td>"+e+"</td>"
+            sm += "<td>"+str(val)+"</td>"
+            sm += "<td>"+get_open_closed_none_form(e,str_to_value(val))+"</td>"
+            sm += "</tr>"
+#            elif e.startswith("MANUAL_SWITCH_HEATING_ONLY_NIGHT"):
+#                sm += "<tr>"
+#                sm += "<td>"+e+"</td>"
+#                sm += "<td>"+str(val)+"</td>"
+#                sm += "<td>This value is calculated only !</td>"
+#                sm += "</tr>"
+        elif e.startswith("MANUAL"):
+            sm += "<tr>"
+            sm += "<td>"+e+"</td>"
+            sm += "<td>"+str(val)+"</td>"
+            sm += "<td>"+get_on_off_form(e,str_to_value(val))+"</td>"
+            sm += "</tr>"
+        elif e.startswith("SWITCH"):
+            ss += "<tr>"
+            ss += "<td>"+e+"</td>"
+            ss += "<td>"+str(val)+"</td>"
+            ss += "</tr>"
+        elif e.endswith("CONTROL"):
+            sc += "<tr>"
+            sc += "<td>"+e+"</td>"
+            sc += "<td>"+str(val)+"</td>"
+            sc += "</tr>"
+        elif e.startswith("OPERATING_HOURS"):
+            so += "<tr>"
+            so += "<td>"+e+"</td>"
+            if isinstance(val, str):
+                val = json.loads(val)
+            if isinstance(val, float):
+                _val = val
+                max = 0
+            else:
+                _val = val[0]
+                max = len(val[1])
+            so += "<td>"+str(round(_val, 1))+"</td>"
+            so += "<td>"+str(round(float(_val)/3600.0, 2))+"</td>"
+            so += "<td>"+str(round(float(_val)/3600.0/24.0, 2))+"</td>"
+            delta_histogram = []
+            #max = len(val[1])
+            for i in range(max):  # is list of operating seconds counter
+                if i+1 < max:
+                    value = val[1][i+1] - val[1][i]
+                    delta_histogram.append(str(round(float(value / 60.0 / 60.0), 2)))  # convert seconds into hours
+            so += "<td>"+str(delta_histogram)+"</td>"
+            so += "</tr>"
+        elif e == 'HEATING/HISTORY/RESPONSE' or e == 'HISTORY_ALL':
+            # do nothing
+            pass
+        else:
+            sv += "<tr>"
+            sv += "<td>"+e+"</td>"
+            sv += "<td>"+str(val)+"</td>"
+            if bExtended:
+                sv += "<td>"+str(stddev)+"</td>"
+            sv += "</tr>"
+    sm += "</table>"
+    sv += "</table>"
+    ss += "</table>"
+    sc += "</table>"
+    so += "</table>"
+    sp += "</table>"
+    si += "</table>"
+    smv += "</table>"   
+    s += "<p><b>Current Control Switches:</b><p>"
+    s += sm
+    s += "<p><b>Current Temperature Values [°C]:</b><p>"
+    s += sv
+    s += "<p><b>Some Control Values:</b><p>"
+    s += smv
+    s += "<p><b>Current Switch Values:</b><p>"
+    s += ss
+    s += "<p><b>Current Control Values:</b><p>"
+    s += sc
+    s += "<p><b>Current Operating Hours Values [s]:</b><p>"
+    s += so
+    s += "<p><b>Some Other Values:</b><p>"
+    s += sp
+    s += "<p><b>Intervalls:</b><p>"
+    s += si
+    s += "<p>" 
+# TODO --> nur im Testbetrieb stop ermoeglichen        
+    s += get_stop_form()
+    s += "</body></html>"
+    return s
 
 def strip_root(name):
     if name.startswith("/"):
@@ -345,6 +514,29 @@ def can_handle_as_file(page):
     
 def handle_as_file(page):
     return open(strip_root(page),"r").read()
+
+def get_all_colors_for_name():
+    aColorMapping = {"HEAT_CREATOR": (255,0,0), 
+                     "SOLAR_KVLF": (0,255,0),
+                     "SOLAR_SLVF": (0,140,0),
+                     "WARM_WATER": (255,0,255),
+                     "BUFFER1": (180,0,0), 
+                     "BUFFER2": (128,0,0),
+                     "OUTDOOR": (0,0,255), 
+                     "OUTGOING_AIR": (0,255,255), 
+                     "CONVERTER": (150,28,170), 
+                     "MIXER_HEATING": (255,128,0), 
+                     "ROOM": (164,64,0), 
+                     "TESTSENSOR_PT1000": (128,128,0)}
+    return aColorMapping
+
+def get_temperature_color_tuple(sName, aColorMapping=None):
+    if aColorMapping is None:
+        aColorMapping = get_all_colors_for_name()
+    if sName in aColorMapping:
+        return (sName, aColorMapping[sName])
+    else:
+        return (sName, (0,0,0))
 
 # *************************************************************************
 
@@ -490,6 +682,7 @@ class HeatingControlHTTPServer:
         sTag = "HISTORY"
         self.aQueueWrite.put("HISTORY")
         self.aQueueWrite.put(args)
+        data = []
         try:
             data = self.aQueueRead.get(True,self.TIMEOUT_CONTROL_PROCESS)
         except Exception as aExc:
@@ -507,28 +700,21 @@ class HeatingControlHTTPServer:
         except Exception as aExc:
             print( "EXCEPTION PLOT_DATA",aExc )
         return data        
-        
-    def cmd_plot(self,args=None):
-        sTag = "HTML"
+
+    def get_plot_html(self):
         arr = []
         aTimelineForXAxis = self._get_plot_data("TIMELINE")
-        #for test: aTimelineForXAxis = [datetime.time(12 + i / 60,i % 60,0) for i in range(240)]
-        for sName,aColor in [("HEAT_CREATOR",(255,0,0)), 
-                             ("SOLAR_KVLF",(0,255,0)),
-                             ("SOLAR_SLVF", (0,140,0)),
-                             ("WARM_WATER", (255,0,255)),
-                             ("BUFFER1", (180,0,0)), 
-                             ("BUFFER2", (128,0,0)),
-                             ("OUTDOOR", (0,0,255)), 
-                             ("OUTGOING_AIR", (0,255,255)), 
-                             ("CONVERTER", (150,28,170)), 
-                             ("MIXER_HEATING", (255,128,0)), 
-                             ("ROOM", (164,64,0)), 
-                             #("TESTSENSOR_PT1000", (128,128,0))
-                             ]:
+        #for test: aTimelineForXAxis = [datetime.time(12 + i / 60,i % 60,0) for i in range(240)]        
+        aColorMapping = get_all_colors_for_name()
+        for sName,aColor in [get_temperature_color_tuple(name, aColorMapping) for name in ["HEAT_CREATOR", "SOLAR_KVLF", "SOLAR_SLVF", "WARM_WATER", "BUFFER1", "BUFFER2", "OUTDOOR", "OUTGOING_AIR", "CONVERTER", "MIXER_HEATING", "ROOM"]]:
             data = self._get_plot_data(sName)
             arr.append((sName,aColor,data))
         s = get_plot_html_page(arr,aTimelineForXAxis)
+        return s
+
+    def cmd_plot(self,args=None):
+        sTag = "HTML"
+        s = self.get_plot_html()
         return sTag,s
 
     def cmd_read_plot(self,args=None):
@@ -591,163 +777,13 @@ class HeatingControlHTTPServer:
         return sTag,"Help:\navailable commands:\n"+self._make_help_string()
         
     def cmd_html_view(self,args=None,bExtended=False):
-        sTag = "HTML"
-        sScript = """<script type="text/javascript">
-// reload the page ...
-//window.setTimeout(function () { location.reload(1); }, 5000);
-
-function JSRequest(name,val) {
-  var xhReq = new XMLHttpRequest();
-  if( val==null )
-    xhReq.open("GET", "write?"+name+"=None", false);
-  else  
-    xhReq.open("GET", "write?"+name+"="+val, false);
-  xhReq.send();
-  var serverResponse = xhReq.responseText;
-  //alert(serverResponse);
-  //ggf. delay falls wert setzten langsamer als update ist !!! ...
-  window.location.reload();
-}
-</script>
-        """
-        s = "<html>"
-        #s += '<meta http-equiv="refresh" content="3" />'
-        s += "<head>"
-        ##s += '<script src="Chart.min.js"></script>'
-        s += "</head>"
-        ##s += '<canvas id="myCanvas" height="450" width="600"></canvas>'
-        s += sScript
-        #s += '<body onload="drawCanvas()">'
-        s += '<a href="plot.html">Measurement Plots<a/>'
         if bExtended:
             data = self._read_data_extended()
         else:
             data = self._read_data()
-        sm = "<table>"
-        sm += "<tr><th>Name</th><th>Value</th><th>Action</th></tr>"
-        smv = "<table>"
-        smv += "<tr><th>Name</th><th>Value</th><th>Action</th></tr>"
-        si = "<table>"
-        si += "<tr><th>Name</th><th>Value</th></tr>"
-        sv = "<table>"
-        if bExtended:
-            sv += "<tr><th>Name</th><th>Value [°C]</th><th>Std Dev</th></tr>"
-        else:
-            sv += "<tr><th>Name</th><th>Value [°C]</th></tr>"
-        ss = "<table>"
-        ss += "<tr><th>Name</th><th>Value</th></tr>"
-        sc = "<table>"
-        sc += "<tr><th>Name</th><th>Value</th></tr>"
-        so = "<table>"
-        so += "<tr><th>Name</th><th>Value [s]</th><th>Value [h]</th><th>Value [d]</th><th>Value Day Histogram [h]</th></tr>"
-        sp = "<table>"
-        sp += "<tr><th>Name</th><th>Value</th></tr>"
-        for e in data:
-            if bExtended:
-                if type(data[e])==tuple:
-                    val = data[e][0]
-                    stddev = data[e][1]
-                else:
-                    val = data[e]
-                    stddev = -1.0
-            else:
-                val = data[e]
-                stddev = 0.0
-            if e in ["MASTER_ID","TICK_COUNTER","ARDURINO_COUNT","WATCHDOG","ACT_TICK","TIMELINE","ENABLE_HEATING_MOTOR","ENABLE_HEATING_MOTOR_NIGHT","ENABLE_HEATING_MOTOR_VALUE","ENABLE_HEATING_MOTOR_DATE_AND_VALUE","ENABLE_HEATING_MOTOR_DATE","ENABLE_DATE_HEATING_MOTOR","ENABLE_MIXER_CLOSE","ENABLE_ANTI_FIXING_SWITCH","ENABLE_MIXER_MOVEMENT","ENABLE_HEATING_MOTOR_ALL_INPUTS","ENABLE_HEAT_PUMP","NOT_MANUAL_SWITCH_HEATING_DATE","TEMP_MEAS","RELAIS_MEAS","LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV","LOGIC_ENABLE_HEATPUMP_VIA_PV","ENABLE_HEAT_PUMP_FOR_PV"]:
-                sp += "<tr>"
-                sp += "<td>"+e+"</td>"
-                sp += "<td>"+str(val)+"</td>"
-                sp += "</tr>"
-            elif e in ["HEATPUMP_CONTROL_SWITCH_OFF_AIR_TEMP","MIXER_HEATING_DES","HEATPUMP_CONTROL_SWITCH_OFF_TEMP","MIXER_HEATING_DES_SWITCH_ON_TEMP","HEATING_CONTROL_SWITCH_ON_TEMP", "HEATPUMP_CONTROL_SWITCH_ON_TEMP", "SWITCH_MIXER_HEATING_CURRENT_OPEN_COUNT", "MIXER_HEATING_DES_CURRENT_DESIRED_TEMPERATURE", "MIXER_HEATING_DES_CURRENT_MAX_TEMPERATURE"]:
-                smv += "<tr>"
-                smv += "<td>"+e+"</td>"
-                smv += "<td>"+str(val)+"</td>"
-                smv += "</tr>"
-            elif e.count("_INTERVALS")>0:
-                si += "<tr>"
-                si += "<td>"+e+"</td>"
-                si += "<td>"+str(val)+"</td>"
-                si += "</tr>"
-            elif e.startswith("MANUAL_SWITCH_MIXER_HEATING"):
-                sm += "<tr>"
-                sm += "<td>"+e+"</td>"
-                sm += "<td>"+str(val)+"</td>"
-                sm += "<td>"+get_open_closed_none_form(e,str_to_value(val))+"</td>"
-                sm += "</tr>"
-#            elif e.startswith("MANUAL_SWITCH_HEATING_ONLY_NIGHT"):
-#                sm += "<tr>"
-#                sm += "<td>"+e+"</td>"
-#                sm += "<td>"+str(val)+"</td>"
-#                sm += "<td>This value is calculated only !</td>"
-#                sm += "</tr>"
-            elif e.startswith("MANUAL"):
-                sm += "<tr>"
-                sm += "<td>"+e+"</td>"
-                sm += "<td>"+str(val)+"</td>"
-                sm += "<td>"+get_on_off_form(e,str_to_value(val))+"</td>"
-                sm += "</tr>"
-            elif e.startswith("SWITCH"):
-                ss += "<tr>"
-                ss += "<td>"+e+"</td>"
-                ss += "<td>"+str(val)+"</td>"
-                ss += "</tr>"
-            elif e.endswith("CONTROL"):
-                sc += "<tr>"
-                sc += "<td>"+e+"</td>"
-                sc += "<td>"+str(val)+"</td>"
-                sc += "</tr>"
-            elif e.startswith("OPERATING_HOURS"):
-                so += "<tr>"
-                so += "<td>"+e+"</td>"
-                _val = val[0]
-                so += "<td>"+str(round(_val, 1))+"</td>"
-                so += "<td>"+str(round(float(_val)/3600.0, 2))+"</td>"
-                so += "<td>"+str(round(float(_val)/3600.0/24.0, 2))+"</td>"
-                delta_histogram = []
-                max = len(val[1])
-                for i in range(max):  # is list of operating seconds counter
-                    if i+1 < max:
-                        value = val[1][i+1] - val[1][i]
-                        delta_histogram.append(str(round(float(value / 60.0 / 60.0), 2)))  # convert seconds into hours
-                so += "<td>"+str(delta_histogram)+"</td>"
-                so += "</tr>"
-            else:
-                sv += "<tr>"
-                sv += "<td>"+e+"</td>"
-                sv += "<td>"+str(val)+"</td>"
-                if bExtended:
-                    sv += "<td>"+str(stddev)+"</td>"
-                sv += "</tr>"
-        sm += "</table>"
-        sv += "</table>"
-        ss += "</table>"
-        sc += "</table>"
-        so += "</table>"
-        sp += "</table>"
-        si += "</table>"
-        smv += "</table>"   
-        s += "<p><b>Current Control Switches:</b><p>"
-        s += sm
-        s += "<p><b>Current Temperature Values [°C]:</b><p>"
-        s += sv
-        s += "<p><b>Some Control Values:</b><p>"
-        s += smv
-        s += "<p><b>Current Switch Values:</b><p>"
-        s += ss
-        s += "<p><b>Current Control Values:</b><p>"
-        s += sc
-        s += "<p><b>Current Operating Hours Values [s]:</b><p>"
-        s += so
-        s += "<p><b>Some Other Values:</b><p>"
-        s += sp
-        s += "<p><b>Intervalls:</b><p>"
-        s += si
-        s += "<p>" 
-# TODO --> nur im Testbetrieb stop ermoeglichen        
-        s += get_stop_form()
-        s += "</body></html>"
-        return sTag,s
-                                
+        sTag = "HTML"
+        return sTag,get_view(data,bExtended)
+
     def _read_data(self):
         data = {}
         self.aQueueWrite.put("READ")
