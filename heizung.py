@@ -129,6 +129,9 @@ import signal
 
 import serial
 import requests
+import json
+
+import paho.mqtt.client as mqtt
 
 from functools import wraps
 
@@ -231,8 +234,8 @@ elif os.name=="nt":
     DEVICE_RS232_HEATINGCONTROLBOARD = "COM7"
 
 # *************************************************************************
-__version__ = "2.8.4"
-__date__    = "9.11.2024"
+__version__ = "2.9.3"
+__date__    = "30.1.2026"
 # *************************************************************************
 START_YEAR = 2010
 
@@ -247,6 +250,30 @@ g_bUseCache = True
 g_bUseWatchdog = False
 g_bDumpDependencyGraph = False
 g_actUsbRs232Devices = []
+
+IP_OF_MQTT_BROKER = "127.0.0.1" # localhost # or: "192.168.178.40"
+
+# MQTT Temperature Names
+MQTT_TEMPERATURE_NAMES = ['TEMP_MEAS','LIGHT1','LIGHT2','SOLAR_KVLF','SOLAR_SLVF','OUTDOOR','MIXER_HEATING','BUFFER1','BUFFER2','OUTGOING_AIR','WARM_WATER','HEAT_CREATOR', 'CONVERTER', 'ROOM', 'TESTSENSOR_PT1000', 'ESP32_HTTP_TEMP']
+MQTT_MANUAL_SWITCH_NAMES = ['MANUAL_SWITCH_MOTOR_SOLAR','MANUAL_SWITCH_MOTOR_HEATING','MANUAL_SWITCH_HEATING_ONLY_NIGHT','MANUAL_SWITCH_HEATING_DATE','MANUAL_SWITCH_MAX_TEMP_CONTROL','MANUAL_SWITCH_MIXER_HEATING','MANUAL_SWITCH_HEATPUMP','MANUAL_SWITCH_VENTILATION','MANUAL_SWITCH_HEATPUMP_SOLAR_VALVE','MANUAL_SWITCH_BOOSTER','MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV']
+# Remark: MANUAL_SWITCH_MIXER_HEATING has Open, Close Stop states
+MQTT_SWITCH_NAMES = ['SWITCH_MOTOR_SOLAR','SWITCH_MOTOR_HEATING','SWITCH_MIXER_HEATING','SWITCH_HEATPUMP','SWITCH_VENTILATION','SWITCH_HEATPUMP_SOLAR_VALVE','SWITCH_BOOSTER']
+MQTT_CONTROL_NAMES = ['SOLAR_CONTROL','HEATING_CONTROL','MIXER_HEATING_CONTROL','HEATPUMP_CONTROL','VENTILATION_CONTROL','HEATPUMP_SOLAR_VALVE_CONTROL','ENABLE_MIXER_MAX_TEMP_CONTROL']
+MQTT_OPERATING_HOURS_NAMES = ['OPERATING_HOURS_HEATPUMP','OPERATING_HOURS_MOTOR_HEATING','OPERATING_HOURS_MOTOR_SOLAR']
+MQTT_INTERVAL_NAMES = ['ENABLE_HEATING_MOTOR_INTERVALS','ENABLE_HEATING_MOTOR_NIGHT_INTERVALS','ENABLE_MIXER_CLOSE_INTERVALS','ENABLE_DATE_HEATING_MOTOR_INTERVALS','ENABLE_ANTI_FIXING_SWITCH_INTERVALS','ENABLE_HEAT_PUMP_FOR_PV_INTERVALS']
+
+def get_index_for_name(name, name_list):
+    try:
+        val = name_list.index(name)
+        return val
+    except ValueError:
+        return -1
+
+def get_indizes_for_all_names(name_list, all_names):
+    ret = []
+    for name in name_list:
+        ret.append( get_index_for_name(name, all_names) )
+    return ret
 
 def is_debug():
     return g_bDebug
@@ -369,7 +396,21 @@ def _node_type_to_color(node_type):
     elif node_type == LAYER_OUTPUT:
         return 'green'
     return 'black'
-   
+
+def check_type(s):
+    """
+       Prüft, ob der String in einen Integer oder Float umgewandelt werden kann.
+    """
+    try:
+        if s.lower() == 'none':
+            return None
+        if '.' in s:
+            return float(s)
+        else:
+            return int(s)
+    except:
+        return s
+
 # *************************************************************************
 class Device(object):
     
@@ -481,7 +522,8 @@ class Rs232Device(Device):
         except Exception as e:     # serial.SerialException
             append_to_logfile(str(datetime.datetime.now())+": Exception (0) in try_func(): "+str(e)+" for function: "+str(fcn)+" args: "+str(args),is_debug())
             try:
-                self.reconnect()  
+# TODO: dieses kann u.U. zu endlosen rekursionen fuehren, wenn die reconnect() immer fehlschlaegt !                
+                self.reconnect()  # ==> self.reset() ==> self.try_func()
             except Exception as e2:
                 append_to_logfile(str(datetime.datetime.now())+": Exception (1) in try_func(): "+str(e2),is_debug())
                 try:
@@ -594,6 +636,7 @@ class Rs232Device(Device):
     def _reset(self):
         if self.aRs232:
             #print("reset")
+# TODO -> close self.aRs232 and open it again ?            
             self.aRs232.reset_input_buffer()
             self.aRs232.reset_output_buffer()
             
@@ -684,14 +727,33 @@ class HeatingControlBoard(Rs232Device):
             device.write("READ_TEMP;")
             return device.readline()
 
+    def _check_hardware_status_with_cache(self,sStatus):
+        # process something like: Rel1=0;Rel2=1;Rel3=1;...;Rel12=0;
+        aStatusParts = sStatus.strip().split(";")
+        needed_updates = [] # list of (channel, value) tuples
+        for sPart in aStatusParts:
+            if sPart.startswith("Rel"):
+                aKeyValue = sPart.split("=")
+                if len(aKeyValue)==2:
+                    iChannel = int(aKeyValue[0][3:])-1   # REMARK: Hardware/firmware index=1..12 <==> python control program logical index=0..11  
+                    bHwValue = aKeyValue[1]=="1"
+                    if iChannel>=0 and iChannel<len(self.cache):
+                        if (self.cache[iChannel]!=None) and (self.cache[iChannel]!=bHwValue):
+                            # cache value differs from hardware value (most probably reset of heizungsplatine?) -> update hardware
+                            needed_updates.append( (iChannel,self.cache[iChannel]) )
+        return needed_updates
+    
     def update_status(self):
         with ResouceScope(self,g_bExclusiveRs232) as device:
             device.write("READ_RELAIS;")
             result = device.readline()
-# TODO -> if read-status != current-status -> write current-status to board
-            #print "update_status", result
-            # process something like: Rel1=0;Rel2=1;Rel3=1;...;Rel12=0;
-# TODO --> update the cache...        
+# TODO -> 29.1.2026 -> der Cache Mechanismus funktioniert nicht richtig, wenn die Heizungsplatine zurueckgesetzt wird (Reset) ! Z. B. wegen Firmware/Software Fehler -> falls Cache nicht mit Hardware Status uebereinstimmt, dann Hardware aktualisieren !
+            # if read-status != current-status -> write current-status to board
+            needed_updates = self._check_hardware_status_with_cache(result)
+            if len(needed_updates)>0:
+                append_to_logfile("HeatingControlBoard.update_status(): updating board status, needed updates: "+str(needed_updates),is_debug())
+                for (iChannel,bValue) in needed_updates:
+                    self._switch_port_advanced(iChannel,bValue,bForceWrite=True)
             return 0
 
     def three_switch_port_fcn(self,iChannelOpen,iChannelClose):
@@ -708,13 +770,16 @@ class HeatingControlBoard(Rs232Device):
         
     def _three_switch(self,iChannelOpen,iChannelClose,iValue):
         do_three_switch(iChannelOpen,iChannelClose,iValue,self._switch_port)
-        
+
     def _switch_port(self,iChannel,bValue):
+        return self._switch_port_advanced(iChannel,bValue,bForceWrite=False)
+
+    def _switch_port_advanced(self,iChannel,bValue,bForceWrite=False):
         #print "_switch_port",iChannel,bValue
         sValue = "1" if bValue else "0"
         # write something like: SET_RELAIS:rel1=1;
         # REMARK: Hardware/firmware index=1..12 <==> python control program logical index=0..11  
-        bWriteToHardware = self.cache[iChannel] != bValue
+        bWriteToHardware = bForceWrite or (self.cache[iChannel] != bValue)
         if bWriteToHardware:
             self.cache[iChannel] = bValue
             with ResouceScope(self,g_bExclusiveRs232) as device:
@@ -850,10 +915,150 @@ class ControlEngine(list):
         self.iCount = 0
         self.bStop = False
         self.aDataNodes = self._get_data_nodes()
+        self.aMQTTClient = mqtt.Client()
+        self.aMQTTClient.on_connect = self.on_mqtt_connect
+        self.aMQTTClient.on_disconnect = self.on_mqtt_disconnect
+        self.aMQTTClient.on_message = self.on_mqtt_message
+        self.aMQTTClient.loop_start()
+        self.aPublishIfChangedCache = {}
+        #for debugging -> connect without thread
+        #ok = self.aMQTTClient.connect(IP_OF_MQTT_BROKER, 1883, 60)
+        #print(ok)
+        threading.Thread(target=self.reconnect_mqtt, daemon=True).start()
         thread_communication_context['fcn_set_stop'] = self._set_stop
         thread_communication_context['fcn_poll_for_commands'] = self._poll_for_commands
         return self._run(sFileName,aLock)
     
+    def reconnect_mqtt(self):
+        while True:
+            if is_debug():
+                print("############################################")
+                print("Connect with MQTT Broker Thread", datetime.datetime.now(), self.aMQTTClient.is_connected(), self.aMQTTClient)
+                print("############################################")
+            if not self.aMQTTClient.is_connected():
+                try:
+                    if is_debug():
+                        print("############################################")
+                        print("🔄 Try to connect...")
+                        print("############################################")
+                    self.aMQTTClient.connect(IP_OF_MQTT_BROKER, 1883, keepalive=60)  # TODO -> localhost on Raspberry Pi !!!
+                    if is_debug():
+                        print("SUCCESS:", self.aMQTTClient.is_connected())
+                        print("############################################")
+                except Exception as e:
+                    print("############################################")
+                    print(f"########### Broker not reachable: {e}")
+                    print("############################################")
+            else:
+                if is_debug():
+                    print("############################################")
+                    print("✅ Already connected with MQTT-Broker")
+                    print("############################################")
+            time.sleep(60)
+
+    def on_mqtt_connect(self,client, userdata, flags, rc):
+        print("############################################")
+        print("*** Connected with result code "+str(rc))
+        print("############################################")
+        # Subscribing in on_connect() means that if we lose the connection and
+        # reconnect then subscriptions will be renewed.
+        #client.subscribe("heating/control/#")
+        # Subscribe to manual switch updates
+        client.subscribe("heating/manual_switch/#")
+        # client.subscribe("heating/manual_switch/manual_switch_motor_solar")
+        # client.subscribe("heating/manual_switch/manual_switch_motor_heating")
+        # client.subscribe("heating/manual_switch/manual_switch_heating_only_night")
+        # client.subscribe("heating/manual_switch/manual_switch_heating_date")
+        # client.subscribe("heating/manual_switch/manual_switch_max_temp_control")
+        # client.subscribe("heating/manual_switch/manual_switch_mixer_heating")
+        # client.subscribe("heating/manual_switch/manual_switch_heatpump")
+        # client.subscribe("heating/manual_switch/manual_switch_ventilation")
+        # client.subscribe("heating/manual_switch/manual_switch_heatpump_solar_valve")
+        # client.subscribe("heating/manual_switch/manual_switch_booster")
+        # client.subscribe("heating/manual_switch/manual_switch_heatpump_only_with_pv")
+        # Subscribe to history requests
+        client.subscribe("heating/history/request")
+        #client.subscribe("heating/history/request/#")
+        # client.subscribe("heating/history/request/HEAT_CREATOR")
+        # client.subscribe("heating/history/request/SOLAR_KVLF")
+        # client.subscribe("heating/history/request/SOLAR_SLVF")
+        # client.subscribe("heating/history/request/WARM_WATER")
+        # client.subscribe("heating/history/request/BUFFER1")
+        # client.subscribe("heating/history/request/BUFFER2")
+        # client.subscribe("heating/history/request/OUTDOOR")
+        # client.subscribe("heating/history/request/OUTGOING_AIR")
+        # client.subscribe("heating/history/request/CONVERTER")
+        # client.subscribe("heating/history/request/MIXER_HEATING")
+        # client.subscribe("heating/history/request/ROOM")
+
+    def on_mqtt_disconnect(self,client, userdata, rc):
+        print("############################################")
+        print("*** Disconnected with result code "+str(rc))
+        print("############################################")
+
+    def on_mqtt_message(self,client, userdata, msg):
+        if is_debug():
+            print("*** "+msg.topic+" "+str(msg.payload))
+        # TODO -> process incoming MQTT messages here !!!
+        # e.g. set new manual switch values     -> self._update_data_for_data_nodes(data_read)
+        # get plot data for temperature nodes   -> self._get_history_for_data_node(data_read)
+        # etc.
+
+        # update manual switch values
+        if msg.topic.startswith("heating/manual_switch/"):
+            switch_name = msg.topic[len("heating/manual_switch/"):]
+            try:
+                iValue = check_type(msg.payload.decode("utf-8"))
+                data_read = { switch_name.upper() : iValue }
+                _num_updated, _num_total = self._update_data_for_data_nodes(data_read)
+                if is_debug():
+                    print(f"### Updated {_num_updated} of {_num_total} data nodes from MQTT message", data_read)
+            except Exception as e:
+                print(f"### ERROR processing MQTT message for topic {msg.topic}: {e}")
+        # process history requests
+        # Browser-Client  -> /heating/history/request/ROOM          subscribe
+        #                             ^                                 v
+        # Heizungs-Client ->       subscribe                  /heating/history/response/ROOM
+        # elif msg.topic.startswith("heating/history/request/"):
+        #     node_name = msg.topic[len("heating/history/request/"):]
+        #     try:
+        #         args = { 'name': node_name.upper() }
+        #         history_data = self._get_history_for_data_node(args)
+        #         # publish history data to response topic
+        #         response_topic = f"heating/history/response/{node_name}"
+        #         payload = json.dumps(history_data)
+        #         self.aMQTTClient.publish(response_topic, payload)
+        #         if is_debug():
+        #             print(f"### Published history data for node {node_name} to topic {response_topic}")
+        #     except Exception as e:
+        #         print(f"### ERROR processing MQTT history request for topic {msg.topic}: {e}")        
+        elif msg.topic == "heating/history/request":    # after receiving request from clinent, send response to clinent
+            try:
+                args = { 'name': 'TIMELINE' }
+                timeline_data = self._get_history_for_data_node(args)
+                timeline_data = [e.isoformat() for e in timeline_data]  # convert datetime objects to ISO strings for JSON serialization
+
+                signals_data = []
+                payload_str = msg.payload.decode("utf-8")
+                lst_signal_names = json.loads(payload_str)
+                import simplesrv
+                aColorMapping = simplesrv.get_all_colors_for_name()
+                for signal_name in lst_signal_names:
+                    args = { 'name': signal_name.upper() }
+                    history_data = self._get_history_for_data_node(args)
+                    signals_data.append((signal_name, simplesrv.get_temperature_color_tuple(signal_name, aColorMapping)[1], history_data))
+
+                data_out = (timeline_data, signals_data)
+
+                # publish history data to response topic
+                response_topic = "heating/history/response"
+                payload = json.dumps(data_out)
+                self.aMQTTClient.publish(response_topic, payload)
+                if is_debug():
+                    print(f"### Published history data to topic {response_topic}")
+            except Exception as e:
+                print(f"### ERROR processing MQTT history request for topic {msg.topic}: {e}")
+
     def _set_stop(self,value):
         self.bStop = value
         
@@ -927,9 +1132,10 @@ class ControlEngine(list):
                 self.sMasterId = aNewData[key]
             else:
                 for e in self:
-                    if key==e.get_name():                    
-                        e.set_value(aNewData[key])
-                        iCount += 1
+                    if key==e.get_name():
+                        if e.get_value() != aNewData[key]:
+                            e.set_value(aNewData[key])
+                            iCount += 1
         return (iCount,len(aNewData))
 
     def _poll_server_cmd_queue(self,qWrite,qRead,iCount):
@@ -942,12 +1148,15 @@ class ControlEngine(list):
             elif data=="EXCEPTION":
                 raise Exception("Software Exception")
             elif data=="READ":
-                qWrite.put(self._get_act_data_from_data_nodes(iCount))
+                _vals = self._get_act_data_from_data_nodes(iCount)
+                # _vals = {'ACT_TICK': 19, 'MASTER_ID': 'None', 'TEMP_MEAS': None, 'LIGHT1': 5.32, 'LIGHT2': 23.23, 'SOLAR_KVLF': 25.46, 'SOLAR_SLVF': 65.66, 'OUTDOOR': 7.12, 'MIXER_HEATING': 28.86, 'BUFFER1': 41.27, 'BUFFER2': 38.59, 'OUTGOING_AIR': 14.96, 'WARM_WATER': 81.04, 'HEAT_CREATOR': 20.68, 'CONVERTER': 5.32, 'ROOM': 23.23, 'SOLAR_CONTROL': 0, 'HEATING_CONTROL': 1, 'HEATING_CONTROL_SWITCH_ON_TEMP': 10.0, 'MIXER_HEATING_DES': 24.5, 'MIXER_HEATING_DES_CURRENT_DESIRED_TEMPERATURE': 24.5, 'MIXER_HEATING_DES_CURRENT_MAX_TEMPERATURE': 28.0, 'MIXER_HEATING_CONTROL': -1, 'HEATPUMP_CONTROL': None, 'HEATPUMP_CONTROL_SWITCH_ON_TEMP': 37.5, 'HEATPUMP_CONTROL_SWITCH_OFF_TEMP': 41.0, 'HEATPUMP_CONTROL_SWITCH_OFF_AIR_TEMP': -0.5, 'VENTILATION_CONTROL': 0, 'HEATPUMP_SOLAR_VALVE_CONTROL': 0, 'ENABLE_HEATING_MOTOR': 0, 'ENABLE_HEATING_MOTOR_INTERVALS': 'start=08:00:00 stop=14:00:00 [0, 1, 2, 3, 4],<br>start=09:00:00 stop=17:00:00 [5, 6],<br>start=21:00:00 stop=23:59:59.999999 ,<br>start=00:00:00 stop=03:00:00 ,<br>', 'ENABLE_HEATING_MOTOR_NIGHT': 0, 'ENABLE_HEATING_MOTOR_NIGHT_INTERVALS': 'start=21:00:00 stop=23:59:59.999999 ,<br>start=00:00:00 stop=03:00:00 ,<br>', 'ENABLE_HEAT_PUMP': None, 'ENABLE_MIXER_CLOSE': 0, 'ENABLE_MIXER_CLOSE_INTERVALS': 'start=14:02:00 stop=14:04:30 [0, 1, 2, 3, 4],<br>start=17:02:00 stop=17:04:30 [5, 6],<br>start=03:02:00 stop=03:04:30 ,<br>', 'ENABLE_DATE_HEATING_MOTOR': 1, 'ENABLE_DATE_HEATING_MOTOR_INTERVALS': 'start=2024-11-01 stop=2025-03-15 ,<br>start=2025-11-01 stop=2026-03-15 ,<br>', 'ENABLE_ANTI_FIXING_SWITCH': None, 'ENABLE_ANTI_FIXING_SWITCH_INTERVALS': 'start=22:30:00 stop=22:35:00 ,<br>', 'MANUAL_SWITCH_MOTOR_SOLAR': '1', 'MANUAL_SWITCH_MOTOR_HEATING': '1', 'MANUAL_SWITCH_HEATING_ONLY_NIGHT': None, 'MANUAL_SWITCH_HEATING_DATE': None, 'NOT_MANUAL_SWITCH_HEATING_DATE': None, 'ENABLE_HEATING_MOTOR_VALUE': 0, 'ENABLE_HEATING_MOTOR_DATE': 1, 'ENABLE_HEATING_MOTOR_DATE_AND_VALUE': 0, 'ENABLE_HEATING_MOTOR_ALL_INPUTS': 1, 'MANUAL_SWITCH_MAX_TEMP_CONTROL': None, 'ENABLE_MIXER_MAX_TEMP_CONTROL': None, 'MANUAL_SWITCH_MIXER_HEATING': None, 'MANUAL_SWITCH_HEATPUMP': None, 'MANUAL_SWITCH_VENTILATION': None, 'MANUAL_SWITCH_HEATPUMP_SOLAR_VALVE': None, 'MANUAL_SWITCH_BOOSTER': None, 'SWITCH_MOTOR_SOLAR': 1, 'SWITCH_MOTOR_HEATING': 1, 'SWITCH_MIXER_HEATING': -1, 'SWITCH_MIXER_HEATING_CURRENT_OPEN_COUNT': -29, 'ENABLE_MIXER_MOVEMENT': 1, 'SWITCH_HEATPUMP': 0, 'SWITCH_VENTILATION': 0, 'SWITCH_HEATPUMP_SOLAR_VALVE': 0, 'SWITCH_BOOSTER': 0, 'INGOING_AIR': -71.0, 'TIMELINE': datetime.datetime(2025, 12, 12, 17, 22, 43, 762852), 'RELAIS_MEAS': None, 'TICK_COUNTER': 1, 'ARDURINO_COUNT': 28.86, 'TESTSENSOR_PT1000': 28.86, 'OPERATING_HOURS_HEATPUMP': (12955.374925700016, [798965.0, 998965.0]), 'OPERATING_HOURS_MOTOR_HEATING': (18311.026037899996, [798965.0, 998965.0]), 'OPERATING_HOURS_MOTOR_SOLAR': (12418.560111400002, [798965.0, 998965.0]), 'MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV': '0', 'LOGIC_IS_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV': 0, 'LOGIC_IS_NOT_MANUAL_SWITCH_HEATPUMP_ONLY_WITH_PV': 1, 'ENABLE_HEAT_PUMP_FOR_PV': 0, 'ENABLE_HEAT_PUMP_FOR_PV_INTERVALS': 'start=10:00:00 stop=15:59:59.999999 ,<br>', 'LOGIC_ENABLE_HEATPUMP_VIA_PV': 0, 'ESP32_HTTP_TEMP': -1.0}
+                qWrite.put(_vals)
             elif data=="READ_EXTENDED":
                 qWrite.put(self._get_act_data_from_data_nodes(iCount,bWithStdDev=True))
             elif data=="WRITE":
                 data_read = qRead.get()
-                #print "==================************** write --> ",data_read
+                # something like: /write?MANUAL_SWITCH_MOTOR_SOLAR=1
+                #print("==================************** write --> ",data_read)
                 qWrite.put(self._update_data_for_data_nodes(data_read))
                 bContinueProcessing = True    # if we get a write operation --> continue immediately with processing (switch relais)
             elif data=="HISTORY":
@@ -1006,6 +1215,13 @@ class ControlEngine(list):
         aDataHeader = ["tick_no","date","time"]
         for e in self:
             aDataHeader.append(e.get_name())
+        indizes_for_temperatures = get_indizes_for_all_names(MQTT_TEMPERATURE_NAMES, aDataHeader)
+        indizes_for_manual_switches = get_indizes_for_all_names(MQTT_MANUAL_SWITCH_NAMES, aDataHeader)
+        indizes_for_switches = get_indizes_for_all_names(MQTT_SWITCH_NAMES, aDataHeader)
+        indizes_for_controls = get_indizes_for_all_names(MQTT_CONTROL_NAMES, aDataHeader)
+        indizes_for_operating_hours = get_indizes_for_all_names(MQTT_OPERATING_HOURS_NAMES, aDataHeader)
+        indizes_for_intervals = get_indizes_for_all_names(MQTT_INTERVAL_NAMES, aDataHeader)
+
         sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,is_debug(),None)
         append_to_file(sActFileName,aDataHeader,sPrefix="#")
         # process the system (endless)
@@ -1024,7 +1240,8 @@ class ControlEngine(list):
             # get actual date for next output of data
             sActFileName,aActDate,bNewFile = map_date_to_filename(sFileName,is_debug(),aActDate)
             # prepare item for single step/measurement output
-            aLineInfo = [iCount,"%02d.%02d.%04d;%02d:%02d:%02d" % (aActDate.day,aActDate.month,aActDate.year,aActDate.hour,aActDate.minute,aActDate.second)]
+            aLineInfo = [iCount,"%02d.%02d.%04d" % (aActDate.day,aActDate.month,aActDate.year), "%02d:%02d:%02d" % (aActDate.hour,aActDate.minute,aActDate.second)]
+            aLineInfoExtended = [None, None, None]
             with aLock:
                 self.iCount = iCount
                 bStop = self.bStop
@@ -1039,24 +1256,96 @@ class ControlEngine(list):
                     #    append_to_file(sActFileName,[str(aException)],sPrefix="#") # log exception as comment line
                     #    val = None
                     _val_for_csv_file = val
+                    _val_extended = None
                     # Improvement 23.1.2024:
                     # if the value is a container, just use the first element of the container to write into the csv file,
                     # the rest of the content in the container are calculated data used for viewers
                     # i. e. OperatingHoursCounter returns (counter, list(histogram_for_last_days)))
                     if isinstance(_val_for_csv_file, (list, tuple)):
+                        if len(_val_for_csv_file) > 1:
+                            _val_extended = _val_for_csv_file[1]
                         _val_for_csv_file = _val_for_csv_file[0] if len(_val_for_csv_file) > 0 else val
                     e._push_value(val)         # set the actual value at the SignalProcessor node (for history of signal)
                     aLineInfo.append(_val_for_csv_file)      # save the actual value for output to file
+                    aLineInfoExtended.append(_val_extended)  # save the extended value (with additional data) for debugging output
             # Bugfix 20.8.2010/12.10.2010 --> first append act data into actual csv file, after that update filename with new date for next data output
             # --> fix to remove first line in csv file with old date !
             if bNewFile:
                 append_to_file(sActFileName,aDataHeader,sPrefix="#")
             append_to_file(sActFileName,aLineInfo)
+
+            # Debug output:
+            #print("####>>>>", len(aDataHeader), aDataHeader)
+            #print("####<<<<", len(aLineInfo), aLineInfo)
+
+            # *** Write data to MQTT Broker ***
+            topic = f"heating/tick_no"
+            payload = f"{iCount}"
+            result = self.aMQTTClient.publish(topic, payload, retain=True)   # qos=0,1,2  # return=MQTTMessageInfo.is_published()
+            if is_debug():
+                print(f"Publishing to MQTT topic: {topic} with payload: {payload}", result, result.is_published())
+
+            temperature_values = [aLineInfo[i] for i in indizes_for_temperatures]
+            for name, value in zip(MQTT_TEMPERATURE_NAMES, temperature_values):
+                topic = f"heating/temperature/{name.lower()}"
+                payload = f"{value}"
+                # temperatures have a lot of noise -> caching and pullish only if changed does help to reduce mqtt traffic
+                result = self.aMQTTClient.publish(topic, payload, retain=True)   # qos=0,1,2  # return=MQTTMessageInfo.is_published()
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
+            manual_switch_values = [aLineInfo[i] for i in indizes_for_manual_switches]
+            for name, value in zip(MQTT_MANUAL_SWITCH_NAMES, manual_switch_values):
+                topic = f"heating/manual_switch/{name.lower()}"
+                payload = f"{value}"
+                result = self._publish_if_changed(topic, payload)
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
+            switch_values = [aLineInfo[i] for i in indizes_for_switches]
+            for name, value in zip(MQTT_SWITCH_NAMES, switch_values):
+                topic = f"heating/switch/{name.lower()}"
+                payload = f"{value}"
+                result = self._publish_if_changed(topic, payload)
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
+            control_values = [aLineInfo[i] for i in indizes_for_controls]
+            for name, value in zip(MQTT_CONTROL_NAMES, control_values):
+                topic = f"heating/control/{name.lower()}"
+                payload = f"{value}"
+                result = self._publish_if_changed(topic, payload)
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
+            operating_hours_values = [[aLineInfo[i], aLineInfoExtended[i]] for i in indizes_for_operating_hours]
+            for name, value in zip(MQTT_OPERATING_HOURS_NAMES, operating_hours_values):
+                topic = f"heating/operating_hours/{name.lower()}"
+                payload = f"{value}"
+                result = self._publish_if_changed(topic, payload)
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
+            interval_values = [aLineInfo[i] for i in indizes_for_intervals]
+            for name, value in zip(MQTT_INTERVAL_NAMES, interval_values):
+                topic = f"heating/intervals/{name.lower()}"
+                payload = f"{value}"
+                result = self._publish_if_changed(topic, payload)
+                if is_debug():
+                    print(f"Publishing to MQTT topic: {topic} with payload: {payload}", value, type(value), result, result.is_published())
+
             self._wait(self.DELAY)
             iCount += 1
             sys.stdout.flush() 
         return True
         
+    def _publish_if_changed(self, topic, payload):
+        if topic not in self.aPublishIfChangedCache or self.aPublishIfChangedCache[topic] != payload:
+            result = self.aMQTTClient.publish(topic, payload, retain=True)   # qos=0,1,2  # return=MQTTMessageInfo.is_published()
+            self.aPublishIfChangedCache[topic] = payload
+            return result
+        return None
+
     def _sort_list(self):
 # TODO --> in die richtige Reihenfolge bringen --> gerichete Graphen ?!
         if is_debug():

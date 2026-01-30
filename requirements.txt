@@ -3,6 +3,7 @@ pyserial==3.5
 #pymysql
 prometheus_client==0.20.0
 huawei_solar==2.2.9
+paho-mqtt
 requests
 pytz
 pyserial-asyncio
